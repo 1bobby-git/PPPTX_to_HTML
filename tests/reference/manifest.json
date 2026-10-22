@@ -1,0 +1,13 @@
+{
+  "generator": "msoffcrypto-tool",
+  "generatorVersion": "5.4.2",
+  "source": "Benign complex.pptx generated locally by scripts/create-fixtures.cjs",
+  "encryption": "ECMA-376 Agile AES-256-CBC, SHA-512, 100000 password iterations",
+  "password": "Offline!암호-2026🔐",
+  "plaintextFile": "complex-plain.pptx",
+  "encryptedFile": "complex-agile.pptx",
+  "plaintextSha256": "3ea39baedab8069744cba60aed2a08ed9f10cb4a0daa03db369124f9648abd3c",
+  "encryptedSha256": "0959c747b80eb3bf7ebebf1882d3839ccf74cc3710c11a8e071dac480780885d",
+  "independentVerification": "msoffcrypto.OfficeFile.load_key(verify_password=True), decrypt(verify_integrity=True), byte-for-byte equality",
+  "refresh": "PYTHONPATH=/tmp/pptx-reference-crypto node scripts/create-protected-fixtures.cjs --refresh-independent"
+}

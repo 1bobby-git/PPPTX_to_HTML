@@ -18,7 +18,15 @@ async function normalizePptxPackage(bytes) {
   try {
     zip = await JSZip.loadAsync(bytes, { checkCRC32: false, createFolders: false });
   } catch (error) {
-    throw new Error('PPTX 압축 파일을 읽을 수 없습니다.');
+    const startsZip = bytes[0] === 0x50 && bytes[1] === 0x4b;
+    const encryptedZip = /encrypted zip/i.test(String(error && error.message));
+    const failure = new Error(encryptedZip
+      ? 'ZIP 자체에 암호가 설정된 형식은 지원하지 않습니다. PowerPoint에서 열 수 있다면 아래 PowerPoint 변환 도우미를 사용해 주세요.'
+      : startsZip
+        ? 'PPTX의 압축 구조를 끝까지 읽지 못했습니다. 파일이 불완전하거나 현재 엔진이 지원하지 않는 구조일 수 있습니다. PowerPoint에서 열리는지 확인해 주세요.'
+        : '브라우저가 받은 데이터를 일반 PPTX 압축 구조로 읽을 수 없습니다. 회사 DRM 등으로 보호된 파일일 수도 있습니다. PowerPoint에서 정상적으로 열린다면 아래 PowerPoint 변환 도우미를 사용해 주세요.');
+    failure.code = encryptedZip ? 'UNSUPPORTED_ENCRYPTION' : startsZip ? 'INVALID_PACKAGE' : 'UNKNOWN_CONTAINER';
+    throw failure;
   }
 
   const names = Object.keys(zip.files);
@@ -48,6 +56,12 @@ async function normalizePptxPackage(bytes) {
     }
   }
 
+  if (!zip.file('[Content_Types].xml') || !zip.file('_rels/.rels') || !zip.file('ppt/presentation.xml')) {
+    const failure = new Error('압축 파일은 읽었지만 변환에 필요한 PowerPoint 문서 구성을 찾지 못했습니다. PowerPoint에서 정상적으로 열리는 파일은 PowerPoint 변환 도우미로 처리할 수 있습니다.');
+    failure.code = 'UNSUPPORTED_PACKAGE';
+    throw failure;
+  }
+
   function relativeTarget(relsName, absoluteTarget) {
     const suffixAt = absoluteTarget.search(/[?#]/);
     const path = suffixAt < 0 ? absoluteTarget : absoluteTarget.slice(0, suffixAt);
@@ -75,7 +89,9 @@ async function normalizePptxPackage(bytes) {
     return relative.join('/') + suffix;
   }
 
-  let changed = false;
+  // JSZip validates the complete archive, including valid ZIPs with a prefix.
+  // Re-emit such an archive for the WASM reader instead of guessing from two bytes.
+  let changed = bytes[0] !== 0x50 || bytes[1] !== 0x4b || bytes[2] !== 0x03 || bytes[3] !== 0x04;
   for (const item of relationships) {
     let source;
     try {

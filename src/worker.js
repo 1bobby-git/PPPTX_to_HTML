@@ -64,7 +64,7 @@ function summarizeDiagnostics(json) {
 function friendlyError(error) {
   const message = String(error?.message || error || '');
   if (/[가-힣]/.test(message)) return message;
-  if (/encrypt|password|compound|OLE2/i.test(message)) return '암호가 설정된 PPTX는 지원하지 않습니다. PowerPoint에서 암호를 해제하고 다시 저장해 주세요.';
+  if (/encrypt|password|compound|OLE2/i.test(message)) return '문서의 암호 또는 보호 방식을 확인하지 못했습니다. 문서 열기 암호를 입력하거나 PowerPoint 변환 도우미를 사용해 주세요.';
   if (/memory|allocation|too (?:large|many)|limit|out of bounds/i.test(message)) return '파일을 처리할 수 있는 메모리 또는 크기 한도를 넘었습니다. 슬라이드나 이미지 크기를 줄인 뒤 다시 시도해 주세요.';
   if (/zip|archive|invalid|corrupt|xml|missing|not found|parse/i.test(message)) return 'PPTX 파일을 읽지 못했습니다. 손상되었거나 지원되지 않는 형식입니다. PowerPoint에서 .pptx로 다시 저장해 주세요.';
   return '파일을 변환하지 못했습니다. PowerPoint에서 .pptx로 다시 저장하거나 다른 파일로 확인해 주세요.';
@@ -75,11 +75,15 @@ self.onmessage = async function (event) {
   if (type !== 'convert') return;
   let info;
   let result;
+  let inputFormat = '확인되지 않은 파일 구조';
   try {
     if (!(bytes instanceof ArrayBuffer) || !bytes.byteLength || bytes.byteLength > MAX_INPUT_BYTES) throw new Error('파일 크기는 0보다 크고 64 MiB 이하여야 합니다.');
     let data = new Uint8Array(bytes);
-    if (data[0] === 0xd0 && data[1] === 0xcf) throw new Error('암호가 설정된 PPTX 또는 예전 .ppt 형식입니다. 암호를 해제한 .pptx 파일로 다시 저장해 주세요.');
-    if (data[0] !== 0x50 || data[1] !== 0x4b) throw new Error('올바른 PPTX 파일이 아닙니다. 확장자만 바꾼 파일은 변환할 수 없습니다.');
+    self.postMessage({type: 'progress', id, message: '문서 형식과 보호 방식을 확인하는 중입니다…'});
+    const prepared = await PptxInput.prepare(data, String(options.password || ''));
+    options.password = '';
+    data = prepared.bytes;
+    inputFormat = prepared.description || prepared.format;
     self.postMessage({type: 'progress', id, message: 'PPTX 파일과 이미지·차트 연결을 확인하는 중입니다…'});
     data = await normalizePptxPackage(data);
     self.postMessage({type: 'progress', id, message: '내장 변환 엔진을 준비하는 중입니다…'});
@@ -101,8 +105,16 @@ self.onmessage = async function (event) {
     if (!slideCount) throw new Error('선택한 범위에 표시할 슬라이드가 없습니다. 숨긴 슬라이드 포함 설정을 확인해 주세요.');
     self.postMessage({type: 'result', id, html, width, height, slideCount, diagnostics: summarizeDiagnostics(result.diagnosticsJson)});
   } catch (error) {
-    self.postMessage({type: 'error', id, message: friendlyError(error)});
+    const code = typeof error?.code === 'string' ? error.code : 'CONVERSION_FAILED';
+    const initial = bytes instanceof ArrayBuffer ? new Uint8Array(bytes).slice(0, 8) : new Uint8Array();
+    const cfb = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1].every((value, index) => initial[index] === value);
+    const header = cfb ? 'D0 CF 11 E0 A1 B1 1A E1 (CFB)' : initial[0] === 0x50 && initial[1] === 0x4b ? '50 4B (ZIP)' : '알려진 ZIP/CFB 표식 없음';
+    const details = ['검사 결과: ' + code, '파일 크기: ' + (bytes?.byteLength || 0) + ' bytes', '파일 구조: ' + inputFormat];
+    if (typeof error?.details === 'string' && error.details) details.push(error.details);
+    details.push('형식 표식: ' + header);
+    self.postMessage({type: 'error', id, code, message: friendlyError(error), details: details.join('\n')});
   } finally {
+    options.password = '';
     result?.free();
     info?.free();
   }

@@ -12,7 +12,10 @@
     status: $('status-line'), statusText: $('status-text'), preview: $('preview-frame'),
     empty: $('preview-empty'), download: $('download-button'), open: $('open-button'),
     ready: $('result-ready'), subtitle: $('result-subtitle'), warnings: $('warnings'),
-    warningCount: $('warning-count'), warningList: $('warning-list')
+    warningCount: $('warning-count'), warningList: $('warning-list'),
+    password: $('document-password'), protection: $('protection-options'),
+    diagnostics: $('diagnostics'), diagnosticsText: $('diagnostics-text'),
+    helper: $('powerpoint-helper-button'), launcher: $('powerpoint-launcher-button')
   };
 
   let selectedFile = null;
@@ -26,6 +29,7 @@
   function setStatus(message, tone) {
     ui.statusText.textContent = message;
     ui.status.dataset.tone = tone || 'neutral';
+    ui.status.dataset.errorCode = '';
   }
 
   function humanSize(bytes) {
@@ -54,6 +58,9 @@
     ui.warnings.hidden = true;
     ui.warnings.open = false;
     ui.warningList.replaceChildren();
+    ui.diagnostics.hidden = true;
+    ui.diagnostics.open = false;
+    ui.diagnosticsText.textContent = '';
     if (resultUrl) {
       URL.revokeObjectURL(resultUrl);
       resultUrl = null;
@@ -67,6 +74,7 @@
     ui.title.disabled = busy;
     ui.range.disabled = busy;
     ui.hidden.disabled = busy;
+    ui.password.disabled = busy;
     ui.convert.disabled = busy || !selectedFile;
     ui.cancel.hidden = !busy;
     ui.drop.classList.toggle('is-busy', busy);
@@ -100,6 +108,7 @@
   function selectFile(file) {
     if (busy) return;
     clearResult();
+    ui.password.value = '';
     const error = validateFile(file);
     if (error) {
       selectedFile = null;
@@ -208,8 +217,11 @@
     const options = {
       includeHidden: ui.hidden.checked,
       slideRange: ui.range.value.trim(),
-      title: ui.title.value.trim() || baseName(file.name)
+      title: ui.title.value.trim() || baseName(file.name),
+      password: ui.password.value
     };
+    // Keep the password only in this conversion request, never in storage or output.
+    ui.password.value = '';
     refreshControls();
     setStatus('파일을 읽는 중입니다…', 'working');
     deadline = setTimeout(function () {
@@ -240,6 +252,15 @@
           showResult(message);
         } else if (message.type === 'error') {
           finishJob('변환 실패: ' + (typeof message.message === 'string' ? message.message : '알 수 없는 오류'), 'error');
+          ui.status.dataset.errorCode = typeof message.code === 'string' ? message.code : 'CONVERSION_FAILED';
+          if (typeof message.details === 'string' && message.details) {
+            ui.diagnosticsText.textContent = message.details;
+            ui.diagnostics.hidden = false;
+          }
+          if (['PASSWORD_REQUIRED', 'INCORRECT_PASSWORD', 'DRM_PROTECTED', 'UNKNOWN_CONTAINER', 'INVALID_CONTAINER', 'LEGACY_PPT', 'UNSUPPORTED_ENCRYPTION', 'UNSUPPORTED_PACKAGE'].includes(message.code)) {
+            ui.protection.open = true;
+          }
+          if (message.code === 'PASSWORD_REQUIRED' || message.code === 'INCORRECT_PASSWORD') ui.password.focus();
         }
       };
       worker.onerror = function (event) {
@@ -249,6 +270,7 @@
       };
       setStatus('슬라이드를 변환하는 중입니다…', 'working');
       worker.postMessage({ type: 'convert', id: id, bytes: bytes, options: options }, [bytes]);
+      options.password = '';
     } catch (error) {
       if (id !== jobId || !busy) return;
       finishJob('파일을 읽거나 변환할 수 없습니다: ' + (error && error.message ? error.message : '알 수 없는 오류'), 'error');
@@ -260,6 +282,32 @@
   ui.input.addEventListener('change', function () { if (ui.input.files && ui.input.files[0]) selectFile(ui.input.files[0]); });
   ui.input.addEventListener('click', function () { if (!busy) ui.input.value = ''; });
   ui.convert.addEventListener('click', convert);
+  ui.password.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' && !busy) {
+      event.preventDefault();
+      convert();
+    }
+  });
+  function downloadHelper(sourceId, filename) {
+    const source = $(sourceId);
+    if (!source || !source.textContent.trim()) {
+      setStatus('변환 도우미가 포함되지 않은 파일입니다. 최신 index.html을 다시 받아 주세요.', 'error');
+      return;
+    }
+    const binary = atob(source.textContent.trim());
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], {type: 'application/octet-stream'}));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+  }
+  ui.helper.addEventListener('click', function () { downloadHelper('powerpoint-helper-source', 'Convert-PptxWithPowerPoint.ps1'); });
+  ui.launcher.addEventListener('click', function () { downloadHelper('powerpoint-launcher-source', 'Convert-PptxWithPowerPoint.cmd'); });
   ui.cancel.addEventListener('click', function () {
     if (!busy) return;
     ++jobId;

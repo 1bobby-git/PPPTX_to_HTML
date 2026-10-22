@@ -69,6 +69,22 @@
             <span>숨긴 슬라이드 포함</span>
           </label>
 
+          <details id="protection-options" class="protection-panel">
+            <summary>암호·보안 문서 변환</summary>
+            <div class="field-group">
+              <label for="document-password">문서 열기 암호 <span class="optional">암호가 있는 경우</span></label>
+              <input id="document-password" type="password" autocomplete="off" maxlength="255" placeholder="PowerPoint에서 입력하는 암호" aria-describedby="password-help">
+              <span id="password-help" class="field-help">입력한 암호로 이 기기에서만 해독합니다. 암호는 저장하거나 결과 HTML에 포함하지 않습니다.</span>
+            </div>
+            <h3>회사 보안(DRM·IRM) 문서</h3>
+            <p>브라우저가 보호된 내용을 읽지 못하면 Windows의 PowerPoint로 변환할 수 있습니다. PowerPoint에서 문서 열기와 이미지 내보내기가 허용되어야 합니다.</p>
+            <div class="helper-actions">
+              <button id="powerpoint-helper-button" class="button button-secondary" type="button">① 변환 도우미 받기</button>
+              <button id="powerpoint-launcher-button" class="button button-secondary" type="button">② 실행 파일 받기</button>
+            </div>
+            <p>두 파일을 같은 폴더에 저장한 뒤 <strong>Convert-PptxWithPowerPoint.cmd</strong>를 실행하세요. PPTX와 저장 위치를 선택하면 슬라이드 이미지가 포함된 HTML을 만듭니다. PowerPoint가 설치된 Windows에서 실행하며, 회사의 내보내기·스크립트 실행 정책이 적용됩니다.</p>
+          </details>
+
           <div class="actions">
             <button id="convert-button" class="button button-primary" type="button" disabled>HTML로 변환 <span aria-hidden="true">→</span></button>
             <button id="cancel-button" class="button button-quiet" type="button" hidden>취소</button>
@@ -77,6 +93,11 @@
             <span id="status-indicator" class="status-indicator" aria-hidden="true"></span>
             <span id="status-text">PPTX 파일을 선택해 주세요.</span>
           </div>
+          <details id="diagnostics" class="format-diagnostics" hidden>
+            <summary>파일 형식 진단 정보</summary>
+            <p>파일 구조와 시작 부분의 형식 표식만 표시합니다. 문서 본문이나 입력한 암호는 포함하지 않습니다.</p>
+            <pre id="diagnostics-text"></pre>
+          </details>
         </section>
 
         <section class="card result-card" aria-labelledby="result-heading">
@@ -112,9 +133,10 @@
       <p class="privacy-note"><span aria-hidden="true">◈</span> 모든 변환은 현재 브라우저에서 처리됩니다. 원본 파일은 업로드되지 않습니다.</p>
       <p class="fidelity-note">정적 HTML로 변환되므로 원본의 애니메이션과 슬라이드 전환은 재현되지 않습니다.</p>
     </main>
-    <footer>Made for local, private conversions.</footer>
+    <footer>로컬 변환기 v1.1.0 · 암호 문서 및 PowerPoint 변환 도우미 지원</footer>
   </div>
   <!-- ENGINE_WORKER -->
+  <!-- OFFICE_HELPER -->
   <!-- APP_SCRIPT -->
 </body>
 </html>
