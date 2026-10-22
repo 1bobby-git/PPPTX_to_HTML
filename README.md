@@ -2,9 +2,34 @@
 
 `.pptx` 프레젠테이션을 독립적인 HTML 파일로 변환하는 로컬 도구입니다. 변환할 파일을 서버로 업로드하지 않습니다. 일반 PPTX와 지원되는 문서 열기 암호가 설정된 PPTX는 **약 4.1 MiB의 `index.html` 한 파일**로 브라우저 안에서 처리합니다. 이 경로에는 Node.js, npm, 별도 서버, CDN, 인터넷 연결 또는 PowerPoint 설치가 필요하지 않습니다.
 
-**v1.2.0은 브라우저 전용 배포입니다.** PowerPoint 도우미의 다운로드 버튼, 내장 실행 파일과 실행 안내를 제거했습니다. PPTX의 텍스트·도형·이미지를 읽어 HTML을 구성하며, 슬라이드 전체를 PNG로 내보내는 과정은 없습니다. 문서 구조를 확인해 일반 PPTX, 지원되는 Office 문서 암호, Microsoft IRM, 구형 PPT, 알 수 없는 보호 형식을 구분합니다. ZIP 표식이 없다는 이유만으로 "확장자만 바꾼 파일"이라고 판단하지 않습니다.
+**v1.3.0에는 PowerPoint를 실행하지 않는 CLI 변환기가 추가되었습니다.** LibreOffice를 `--headless`로 호출하고, 변환한 각 페이지를 SVG로 만들어 한 개의 HTML에 넣습니다. 변환 중 PowerPoint·LibreOffice 창이나 브라우저를 열지 않습니다. 기존 단일 `index.html` 방식도 그대로 사용할 수 있습니다.
 
-## 바로 사용하기
+## CLI로 바로 변환하기 — Windows
+
+[Python](https://www.python.org/downloads/windows/)과 [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/)를 설치하고, 이 저장소를 **Code → Download ZIP**으로 내려받아 압축을 풉니다. 저장소 폴더에서 아래 명령을 실행하세요.
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r .\tools\requirements-cli.txt
+.\.venv\Scripts\python.exe .\tools\convert-pptx.py --check
+.\.venv\Scripts\python.exe .\tools\convert-pptx.py "C:\test.pptx" -o "C:\test.html"
+```
+
+이후에는 다음 명령으로 변환할 수 있습니다.
+
+```powershell
+.\tools\Convert-PptxCli.cmd "C:\test.pptx" -o "C:\test.html"
+```
+
+출력 파일이 이미 있으면 덮어쓰지 않습니다. 교체하려면 `--overwrite`를 추가하세요. 가상환경 활성화나 PowerShell 실행 정책 변경은 필요하지 않습니다. **의존성 설치가 끝난 뒤에는 변환 서버나 인터넷 연결 없이 실행**합니다.
+
+- 출력: SVG 슬라이드·탐색 UI·읽기용 텍스트가 내장된 HTML 한 파일. 슬라이드 전체를 PNG로 캡처하지 않습니다.
+- 지원: 숨김 슬라이드 포함, 원본 슬라이드 범위, 제목, JSON 결과, 시간 제한, 실행 환경 점검.
+- 보안 문서: 파일의 ZIP 표식만으로 먼저 거절하지 않고 LibreOffice에 원본 파일 읽기를 요청합니다. **NASCA+SD 복호화 기능이 추가된 것은 아닙니다.** 해당 PC의 보안 정책과 LibreOffice의 읽기 권한에 따라 실패할 수 있으며, 실제 NASCA 문서 성공 여부는 검증되지 않았습니다.
+
+설치 조건·옵션·오류 코드·한계는 [CLI 사용 설명](docs/CLI.md)에 정리했습니다.
+
+## 브라우저에서 바로 사용하기
 
 1. 이 저장소의 [`index.html`](index.html)을 열고 **Download raw file**로 파일을 저장합니다. 저장한 파일을 더블클릭해 Chrome 또는 Edge의 `file://` 주소에서 엽니다.
 2. 또는 GitHub의 **Code → Download ZIP**을 선택하고 압축을 푼 뒤, 그 안의 `index.html`을 더블클릭합니다.
@@ -38,15 +63,15 @@ NASCA는 사용자 인증과 문서 권한 확인을 거쳐 복호화하는 문�
 | 지원되는 Office 문서 열기 암호가 있는 PPTX | 사용자가 입력한 암호로 브라우저 안에서 복호화 후 변환 |
 | 회사 DRM 암호문 또는 지원되지 않는 보호 형식 | 오류 코드와 형식 진단을 표시하고 중지 |
 
-보호 문서를 PowerPoint 없이 변환하려면 **회사에서 허용한 일반 PPTX 내보내기 사본**이나 **조직이 제공하는 공식 DRM 연동**이 필요합니다. 현재 버전에는 NASCA 전용 복호화가 구현되어 있지 않습니다. 파일 확장자를 바꾸거나 암호 입력란에 회사 로그인 암호를 넣는 것으로 해결되지 않습니다.
+CLI는 브라우저와 별도로 설치된 LibreOffice 엔진을 사용합니다. 원본 파일을 정상적으로 읽고 내보낼 수 있다면 HTML을 만들지만, LibreOffice가 암호화된 내용만 받거나 읽기가 차단되면 변환할 수 없습니다. 실패한 문서를 성공한 HTML로 저장하지 않습니다. 현재 버전에는 NASCA 전용 복호화가 구현되어 있지 않으며, CLI로 실행한다는 것만으로 DRM 권한이 달라지지는 않습니다.
 
 ### 이전 PowerPoint 도우미와의 차이
 
-v1.1.0 도우미는 PowerPoint의 슬라이드 PNG 내보내기 결과를 HTML에 넣는 이미지 기반 방식이었습니다. PowerPoint 자체의 외부 통신이나 회사 보안 제품의 제어까지 이 도우미가 제한하지는 못했습니다. v1.2.0의 `index.html`과 빌드는 해당 도우미를 포함하거나 호출하지 않습니다. 기존에 받은 PS1/CMD 대신 새 `index.html`을 사용하세요.
+v1.1.0 도우미는 PowerPoint의 슬라이드 PNG 내보내기 결과를 HTML에 넣는 이미지 기반 방식이었습니다. PowerPoint 자체의 외부 통신이나 회사 보안 제품의 제어까지 이 도우미가 제한하지는 못했습니다. 현재 `index.html`과 새 CLI는 해당 도우미를 호출하지 않습니다. 명령행에서는 **`Convert-PptxCli.cmd` 또는 `convert-pptx.py`**를 사용하세요.
 
-저장소 `tools/`에는 이전 버전의 참고 소스가 남아 있으며, 현재 브라우저 변환의 구성 요소가 아닙니다. 이전 도우미의 PNG 내보내기 오류를 고쳤거나 실제 NASCA+SD 문서 변환에 성공했다고 주장하지 않습니다.
+저장소 `tools/Convert-PptxWithPowerPoint.*`는 이전 버전 참고 소스입니다. 새 CLI의 구성 요소가 아니며, 이전 도우미의 PNG 내보내기 오류를 고쳤거나 실제 NASCA+SD 문서 변환에 성공했다고 주장하지 않습니다.
 
-## 변환 범위와 주의사항
+## 브라우저 변환 범위와 주의사항
 
 - 원본의 애니메이션과 슬라이드 전환은 정적 화면으로 표현됩니다.
 - 차트는 종류와 축·캐시 구성에 따라 지원 범위가 다르며, 기본형 차트도 대체 표시로 나올 수 있습니다. 테스트에서는 원형 차트의 실제 렌더링과 지원되지 않는 막대 차트 구성의 경고·대체 표시를 각각 확인합니다.
@@ -96,6 +121,9 @@ Chrome for Testing의 실제 `file://` 환경에서 HTTP/HTTPS 요청을 모두 
 | 경로 | 역할 |
 | --- | --- |
 | `index.html` | 배포용 단일 HTML 파일. 다운로드 후 바로 실행합니다. |
+| `tools/convert-pptx.py`, `tools/Convert-PptxCli.cmd` | PowerPoint 없이 LibreOffice headless → PDF → SVG → 독립 HTML을 만드는 CLI |
+| `tools/requirements-cli.txt`, `docs/CLI.md` | CLI 의존성 버전과 사용 설명 |
+| `tests/cli.py`, `tests/cli-browser.cjs` | 실제 CLI 변환과 결과 HTML의 로컬 브라우저 검증 |
 | `src/shell.html`, `src/styles.css`, `src/app.js` | 변환기 화면과 사용자 흐름 |
 | `src/worker.js` | 브라우저 내 PPTX 변환 작업 |
 | `src/input-package.js` | 문서 형식·보호 방식 판별, 입력 암호를 이용한 Office 복호화 |
@@ -114,4 +142,6 @@ Chrome for Testing의 실제 `file://` 환경에서 HTTP/HTTPS 요청을 모두 
 
 Office 암호 처리에는 [`officecrypto-tool` 0.0.19](https://github.com/zurmokeeper/officecrypto-tool)의 암호화 모듈, `cfb` 1.2.2, `xml2js` 0.6.2 및 Browserify 브라우저 구현을 포함합니다. 실제 번들에 포함된 패키지의 고지는 `licenses/OfficeCrypto-BUNDLED-LICENSES.txt`와 HTML 안에 함께 들어갑니다. 독립 기준 파일의 생성 정보와 해시는 `tests/reference/manifest.json`에 있습니다.
 
-이 프로젝트 자체의 라이선스는 [MIT](LICENSE)입니다. GitHub Pages에 게시하지 않아도 로컬에서 실행할 수 있습니다.
+저장소 자체 소스의 라이선스는 [MIT](LICENSE)입니다. CLI가 별도로 사용하는 [LibreOffice](https://www.libreoffice.org/about-us/licenses/)와 [PyMuPDF](https://pymupdf.readthedocs.io/en/latest/about.html)의 라이선스는 각각의 프로젝트를 따릅니다. PyMuPDF와 MuPDF는 AGPL-3.0 또는 Artifex 상용 라이선스로 제공되며, MIT 고지가 이 외부 의존성의 라이선스를 대체하지 않습니다. 이 저장소는 해당 실행 파일이나 Python 패키지를 함께 배포하지 않습니다.
+
+GitHub Pages에 게시하지 않아도 로컬에서 실행할 수 있습니다.

@@ -1,0 +1,2 @@
+# PyMuPDF is available under AGPL-3.0 or a commercial license.
+PyMuPDF==1.28.2
