@@ -1,0 +1,46 @@
+/* The engine's pixel slide layout stays intact; only the outer shell is scaled on screen. */
+html, body { min-width: 0; max-width: 100%; }
+body { margin: 0; background: #e9edf3; color: #172033; }
+#ptv-toolbar, #ptv-toolbar * { box-sizing: border-box; }
+#ptv-toolbar {
+  position: sticky; top: 0; z-index: 1000; display: flex; align-items: center;
+  justify-content: space-between; gap: 10px; min-width: 0; padding: 8px 12px;
+  background: #fff; box-shadow: 0 1px 6px rgba(15, 23, 42, .18);
+  font: 14px/1.3 system-ui, sans-serif;
+}
+#ptv-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ptv-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; flex: 0 0 auto; }
+.ptv-controls button, .ptv-controls select {
+  min-height: 34px; border: 1px solid #aab4c3; border-radius: 6px;
+  padding: 4px 8px; background: #fff; color: #172033; font: inherit; cursor: pointer;
+}
+.ptv-controls button:disabled { opacity: .45; cursor: default; }
+.ptv-controls button:focus-visible, .ptv-controls select:focus-visible,
+#ptv-slides .slide-shell:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+#ptv-main { width: 100%; min-width: 0; }
+#ptv-slides.pptx-container {
+  display: flex; flex-direction: column; align-items: center; gap: 20px;
+  width: 100%; max-width: 100%; min-width: 0; padding: 20px 12px;
+}
+#ptv-slides > .slide-shell { position: relative; flex: none; max-width: 100%; overflow: hidden; scroll-margin-top: 80px; }
+#ptv-slides > .slide-shell[hidden] { display: none !important; }
+#ptv-slides > .slide-shell > .slide { position: relative; flex: none; transform-origin: top left; }
+body.ptv-single #ptv-main { min-height: calc(100vh - 55px); display: flex; align-items: center; }
+body.ptv-single #ptv-slides { justify-content: center; }
+@media (max-width: 600px) {
+  #ptv-toolbar { flex-wrap: wrap; }
+  #ptv-title { flex-basis: 100%; }
+  .ptv-controls { width: 100%; justify-content: flex-start; }
+  .ptv-controls label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+}
+@media print {
+  html, body, #ptv-main, #ptv-slides.pptx-container { width: auto !important; max-width: none !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: white !important; }
+  #ptv-toolbar { display: none !important; }
+  #ptv-slides.pptx-container { display: block !important; }
+  #ptv-slides > .slide-shell, #ptv-slides > .slide-shell[hidden] {
+    display: block !important; width: auto !important; height: auto !important;
+    overflow: visible !important; break-after: page; page-break-after: always;
+  }
+  #ptv-slides > .slide-shell:last-child { break-after: auto; page-break-after: auto; }
+  #ptv-slides > .slide-shell > .slide { transform: none !important; box-shadow: none !important; }
+}

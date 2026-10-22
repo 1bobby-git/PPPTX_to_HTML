@@ -1,0 +1,36 @@
+{
+  "name": "ppptx-to-html",
+  "version": "1.0.0",
+  "description": "Single-file offline PPTX to HTML converter for file:// browsers",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "pretest": "node scripts/create-fixtures.cjs",
+    "test": "node tests/offline.cjs",
+    "test:fixtures": "node scripts/create-fixtures.cjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1bobby-git/PPPTX_to_HTML.git"
+  },
+  "keywords": [],
+  "author": "1bobby-git",
+  "license": "MIT",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/1bobby-git/PPPTX_to_HTML/issues"
+  },
+  "homepage": "https://github.com/1bobby-git/PPPTX_to_HTML#readme",
+  "dependencies": {
+    "@briank-dev/pptx-to-html": "2.1.0",
+    "dompurify": "3.4.17",
+    "jszip": "3.10.1"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1",
+    "pptxgenjs": "4.0.1"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}
