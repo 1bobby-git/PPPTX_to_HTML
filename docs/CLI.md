@@ -1,5 +1,7 @@
 # PowerPoint 없이 CLI로 PPTX → HTML
 
+> 이 문서는 v1.3.0에서 추가한 **Python·LibreOffice 방식**입니다. PowerPoint와 LibreOffice를 모두 실행하지 않는 v1.4.0의 **Node.js 방식**은 [Native CLI 설명](NATIVE_CLI.md)을 사용하세요. 기존 `Convert-PptxCli.cmd`의 동작은 유지합니다.
+
 이 CLI는 PowerPoint를 실행하지 않습니다. 설치된 LibreOffice를 화면 없는 `--headless` 모드로 호출하고, 그 결과를 한 개의 HTML 파일로 저장합니다. 변환할 때 브라우저를 열거나 로컬 웹 서버를 실행할 필요가 없습니다.
 
 ## Windows 설치와 실행

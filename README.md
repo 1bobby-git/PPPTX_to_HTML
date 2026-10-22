@@ -2,32 +2,31 @@
 
 `.pptx` 프레젠테이션을 독립적인 HTML 파일로 변환하는 로컬 도구입니다. 변환할 파일을 서버로 업로드하지 않습니다. 일반 PPTX와 지원되는 문서 열기 암호가 설정된 PPTX는 **약 4.1 MiB의 `index.html` 한 파일**로 브라우저 안에서 처리합니다. 이 경로에는 Node.js, npm, 별도 서버, CDN, 인터넷 연결 또는 PowerPoint 설치가 필요하지 않습니다.
 
-**v1.3.0에는 PowerPoint를 실행하지 않는 CLI 변환기가 추가되었습니다.** LibreOffice를 `--headless`로 호출하고, 변환한 각 페이지를 SVG로 만들어 한 개의 HTML에 넣습니다. 변환 중 PowerPoint·LibreOffice 창이나 브라우저를 열지 않습니다. 기존 단일 `index.html` 방식도 그대로 사용할 수 있습니다.
+**v1.4.0에는 PowerPoint·LibreOffice·브라우저 실행 없이 변환하는 Node.js CLI가 추가되었습니다.** PPTX의 ZIP/XML을 로컬에서 읽고 텍스트·표·이미지·SVG 도형을 독립 HTML로 만듭니다. PDF나 슬라이드 전체 PNG를 중간 결과로 만들지 않습니다. 기존 단일 `index.html`과 v1.3.0 LibreOffice CLI도 사용할 수 있습니다.
 
 ## CLI로 바로 변환하기 — Windows
 
-[Python](https://www.python.org/downloads/windows/)과 [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/)를 설치하고, 이 저장소를 **Code → Download ZIP**으로 내려받아 압축을 풉니다. 저장소 폴더에서 아래 명령을 실행하세요.
+[Node.js 24 LTS 최신 버전](https://nodejs.org/en/download)을 설치하고, 이 저장소를 **Code → Download ZIP**으로 내려받아 압축을 풉니다. 저장소 폴더에서 아래 명령을 실행하세요. Node.js 24 계열에서는 24.15.0 이상이 필요합니다.
 
 ```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r .\tools\requirements-cli.txt
-.\.venv\Scripts\python.exe .\tools\convert-pptx.py --check
-.\.venv\Scripts\python.exe .\tools\convert-pptx.py "C:\test.pptx" -o "C:\test.html"
+npm.cmd ci --omit=dev --ignore-scripts --no-audit --no-fund
+.\tools\Convert-PptxNative.cmd --check
+.\tools\Convert-PptxNative.cmd "C:\test.pptx" -o "C:\test.html"
 ```
 
-이후에는 다음 명령으로 변환할 수 있습니다.
+의존성이 포함된 `PPPTX_to_HTML_Native_v1.4.0.zip`을 받았다면 `npm.cmd ci`는 생략합니다. 압축을 푼 폴더에서 바로 실행하세요. CMD를 사용하지 않고 다음처럼 실행해도 같습니다.
 
 ```powershell
-.\tools\Convert-PptxCli.cmd "C:\test.pptx" -o "C:\test.html"
+node .\tools\convert-pptx.cjs "C:\test.pptx" -o "C:\test.html"
 ```
 
-출력 파일이 이미 있으면 덮어쓰지 않습니다. 교체하려면 `--overwrite`를 추가하세요. 가상환경 활성화나 PowerShell 실행 정책 변경은 필요하지 않습니다. **의존성 설치가 끝난 뒤에는 변환 서버나 인터넷 연결 없이 실행**합니다.
+출력 파일이 이미 있으면 덮어쓰지 않습니다. 교체하려면 `--overwrite`를 추가하세요. PowerShell 실행 정책 변경은 필요하지 않습니다. **의존성 준비가 끝난 뒤에는 변환 서버나 인터넷 연결 없이 실행**합니다.
 
-- 출력: SVG 슬라이드·탐색 UI·읽기용 텍스트가 내장된 HTML 한 파일. 슬라이드 전체를 PNG로 캡처하지 않습니다.
-- 지원: 숨김 슬라이드 포함, 원본 슬라이드 범위, 제목, JSON 결과, 시간 제한, 실행 환경 점검.
-- 보안 문서: 파일의 ZIP 표식만으로 먼저 거절하지 않고 LibreOffice에 원본 파일 읽기를 요청합니다. **NASCA+SD 복호화 기능이 추가된 것은 아닙니다.** 해당 PC의 보안 정책과 LibreOffice의 읽기 권한에 따라 실패할 수 있으며, 실제 NASCA 문서 성공 여부는 검증되지 않았습니다.
+- 출력: 선택 가능한 텍스트, 표, 내장 이미지, SVG 도형과 탐색 UI가 들어 있는 HTML 한 파일.
+- 지원: 숨김 슬라이드 포함, 원본 슬라이드 범위, 제목, JSON 결과, 시간 제한, 실행 환경 점검, 지원되는 Office 문서 열기 암호의 표준 입력.
+- 보안 문서: **NASCA+SD 복호화 기능이 추가된 것은 아닙니다.** CLI가 읽은 바이트가 암호문이면 HTML 구조를 만들 수 없습니다. 알 수 없는 형식을 확장자 변경이나 DRM으로 단정하지 않고 오류 코드를 표시합니다.
 
-설치 조건·옵션·오류 코드·한계는 [CLI 사용 설명](docs/CLI.md)에 정리했습니다.
+설치 조건·옵션·오류 코드·한계는 [새 Native CLI 사용 설명](docs/NATIVE_CLI.md)에 정리했습니다. 기존 Python·LibreOffice 방식이 필요하면 [v1.3.0 CLI 사용 설명](docs/CLI.md)을 사용하세요. **`Convert-PptxNative.cmd`가 새 방식이며, `Convert-PptxCli.cmd`는 기존 LibreOffice 방식**입니다.
 
 ## 브라우저에서 바로 사용하기
 
@@ -63,15 +62,15 @@ NASCA는 사용자 인증과 문서 권한 확인을 거쳐 복호화하는 문�
 | 지원되는 Office 문서 열기 암호가 있는 PPTX | 사용자가 입력한 암호로 브라우저 안에서 복호화 후 변환 |
 | 회사 DRM 암호문 또는 지원되지 않는 보호 형식 | 오류 코드와 형식 진단을 표시하고 중지 |
 
-CLI는 브라우저와 별도로 설치된 LibreOffice 엔진을 사용합니다. 원본 파일을 정상적으로 읽고 내보낼 수 있다면 HTML을 만들지만, LibreOffice가 암호화된 내용만 받거나 읽기가 차단되면 변환할 수 없습니다. 실패한 문서를 성공한 HTML로 저장하지 않습니다. 현재 버전에는 NASCA 전용 복호화가 구현되어 있지 않으며, CLI로 실행한다는 것만으로 DRM 권한이 달라지지는 않습니다.
+새 Native CLI는 브라우저와 같은 JavaScript/WASM 변환 엔진을 Node.js에서 실행합니다. 파일을 읽는 프로그램에 평문 PPTX가 제공되는 경우에만 내용을 변환할 수 있습니다. 회사 보안 프로그램이 Node.js에도 그 읽기를 허용하는지는 이 도구가 결정하지 않습니다. 현재 버전에는 NASCA 전용 복호화가 구현되어 있지 않으며, 실제 NASCA 문서 성공 여부는 검증되지 않았습니다. 기존 LibreOffice CLI에도 같은 제한이 적용됩니다.
 
 ### 이전 PowerPoint 도우미와의 차이
 
-v1.1.0 도우미는 PowerPoint의 슬라이드 PNG 내보내기 결과를 HTML에 넣는 이미지 기반 방식이었습니다. PowerPoint 자체의 외부 통신이나 회사 보안 제품의 제어까지 이 도우미가 제한하지는 못했습니다. 현재 `index.html`과 새 CLI는 해당 도우미를 호출하지 않습니다. 명령행에서는 **`Convert-PptxCli.cmd` 또는 `convert-pptx.py`**를 사용하세요.
+v1.1.0 도우미는 PowerPoint의 슬라이드 PNG 내보내기 결과를 HTML에 넣는 이미지 기반 방식이었습니다. PowerPoint 자체의 외부 통신이나 회사 보안 제품의 제어까지 이 도우미가 제한하지는 못했습니다. 현재 `index.html`과 두 CLI는 해당 도우미를 호출하지 않습니다. PowerPoint·LibreOffice를 모두 사용하지 않으려면 **`Convert-PptxNative.cmd` 또는 `convert-pptx.cjs`**를 사용하세요.
 
 저장소 `tools/Convert-PptxWithPowerPoint.*`는 이전 버전 참고 소스입니다. 새 CLI의 구성 요소가 아니며, 이전 도우미의 PNG 내보내기 오류를 고쳤거나 실제 NASCA+SD 문서 변환에 성공했다고 주장하지 않습니다.
 
-## 브라우저 변환 범위와 주의사항
+## Native CLI와 브라우저 변환 범위
 
 - 원본의 애니메이션과 슬라이드 전환은 정적 화면으로 표현됩니다.
 - 차트는 종류와 축·캐시 구성에 따라 지원 범위가 다르며, 기본형 차트도 대체 표시로 나올 수 있습니다. 테스트에서는 원형 차트의 실제 렌더링과 지원되지 않는 막대 차트 구성의 경고·대체 표시를 각각 확인합니다.
@@ -88,13 +87,15 @@ v1.1.0 도우미는 PowerPoint의 슬라이드 PNG 내보내기 결과를 HTML�
 
 ## 개발 및 검증
 
-저장소에서 빌드하려는 개발자에게만 Node.js와 npm이 필요합니다.
+Native CLI 실행 및 저장소 개발에는 Node.js가 필요합니다. 배포된 단일 `index.html`만 사용하는 경우에는 설치할 필요가 없습니다.
 
 ```bash
 npm ci
 npm run build
 npx playwright install chromium
 npm test
+npm run test:native
+npm run package:native
 ```
 
 `npm run build`는 의존성이 설치된 뒤 인터넷 연결 없이 실행할 수 있습니다. Playwright가 사용할 Chromium을 이미 설치했다면 `CHROME_BIN` 환경 변수에 실행 파일 경로를 지정할 수 있습니다. `npm test`는 먼저 테스트용 PPTX를 생성합니다. `npm run test:fixtures`로 테스트 파일만 다시 만들 수도 있습니다. Linux에서 한글 스크린샷을 검증하려면 로컬 한글 글꼴도 필요합니다.
@@ -121,6 +122,9 @@ Chrome for Testing의 실제 `file://` 환경에서 HTTP/HTTPS 요청을 모두 
 | 경로 | 역할 |
 | --- | --- |
 | `index.html` | 배포용 단일 HTML 파일. 다운로드 후 바로 실행합니다. |
+| `tools/convert-pptx.cjs`, `tools/Convert-PptxNative.cmd` | Node.js에서 PPTX ZIP/XML을 HTML·SVG로 직접 변환하는 CLI |
+| `src/native-cli-worker.cjs`, `docs/NATIVE_CLI.md` | Native CLI의 작업 스레드와 사용 설명 |
+| `tests/native-cli.cjs`, `scripts/package-native-cli.cjs` | Native CLI 검증 및 의존성을 포함한 오프라인 ZIP 생성 |
 | `tools/convert-pptx.py`, `tools/Convert-PptxCli.cmd` | PowerPoint 없이 LibreOffice headless → PDF → SVG → 독립 HTML을 만드는 CLI |
 | `tools/requirements-cli.txt`, `docs/CLI.md` | CLI 의존성 버전과 사용 설명 |
 | `tests/cli.py`, `tests/cli-browser.cjs` | 실제 CLI 변환과 결과 HTML의 로컬 브라우저 검증 |
@@ -142,6 +146,10 @@ Chrome for Testing의 실제 `file://` 환경에서 HTTP/HTTPS 요청을 모두 
 
 Office 암호 처리에는 [`officecrypto-tool` 0.0.19](https://github.com/zurmokeeper/officecrypto-tool)의 암호화 모듈, `cfb` 1.2.2, `xml2js` 0.6.2 및 Browserify 브라우저 구현을 포함합니다. 실제 번들에 포함된 패키지의 고지는 `licenses/OfficeCrypto-BUNDLED-LICENSES.txt`와 HTML 안에 함께 들어갑니다. 독립 기준 파일의 생성 정보와 해시는 `tests/reference/manifest.json`에 있습니다.
 
-저장소 자체 소스의 라이선스는 [MIT](LICENSE)입니다. CLI가 별도로 사용하는 [LibreOffice](https://www.libreoffice.org/about-us/licenses/)와 [PyMuPDF](https://pymupdf.readthedocs.io/en/latest/about.html)의 라이선스는 각각의 프로젝트를 따릅니다. PyMuPDF와 MuPDF는 AGPL-3.0 또는 Artifex 상용 라이선스로 제공되며, MIT 고지가 이 외부 의존성의 라이선스를 대체하지 않습니다. 이 저장소는 해당 실행 파일이나 Python 패키지를 함께 배포하지 않습니다.
+Native CLI는 같은 변환·입력·정화 코드를 재사용하며 DOM 처리에 [`jsdom` 30.1.3](https://github.com/jsdom/jsdom)(MIT)을 사용합니다. 의존성을 포함한 Native ZIP에는 해당 패키지의 라이선스 파일도 보존합니다. 브라우저나 Office 프로세스를 실행하지 않고 Node.js의 작업 스레드 안에서 처리합니다.
+
+사용자가 제시한 [`g21589/PPTX2HTML`](https://github.com/g21589/PPTX2HTML)의 ZIP/XML → HTML·SVG 변환 구조를 참고했습니다. 해당 프로젝트는 브라우저용 JavaScript 구현입니다. 이 저장소의 실제 변환은 위에 명시한 `pptx2html-turbo` 엔진을 재사용합니다.
+
+저장소 자체 소스의 라이선스는 [MIT](LICENSE)입니다. 기존 Python CLI가 별도로 사용하는 [LibreOffice](https://www.libreoffice.org/about-us/licenses/)와 [PyMuPDF](https://pymupdf.readthedocs.io/en/latest/about.html)의 라이선스는 각각의 프로젝트를 따릅니다. PyMuPDF와 MuPDF는 AGPL-3.0 또는 Artifex 상용 라이선스로 제공되며, MIT 고지가 이 외부 의존성의 라이선스를 대체하지 않습니다. Native CLI에는 LibreOffice와 PyMuPDF가 필요하지 않으며 Native ZIP에도 포함하지 않습니다.
 
 GitHub Pages에 게시하지 않아도 로컬에서 실행할 수 있습니다.
