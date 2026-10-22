@@ -85,7 +85,7 @@ async function moduleContract() {
   console.log('PASS input package contract; independent Agile bytes + HMAC; Standard; namespaces; container classification');
 }
 
-async function browserContract() {
+async function browserContract({ noPowerPointUIOnly = false } = {}) {
   const executablePath = browserExecutable();
   assert.ok(executablePath, 'Chromium is unavailable; set CHROME_BIN to a compatible Chrome executable.');
   const browser = await chromium.launch({ headless: true, executablePath, args: ['--no-sandbox'] });
@@ -108,6 +108,17 @@ async function browserContract() {
     assert.equal(new URL(page.url()).protocol, 'file:');
     assert.equal(await page.locator('#document-password').getAttribute('type'), 'password');
     await page.locator('#protection-options').evaluate(element => { element.open = true; });
+
+    async function expectNoPowerPointIntegration() {
+      assert.equal(await page.locator('#powerpoint-helper-button, #powerpoint-launcher-button').count(), 0,
+        'the browser workflow must not offer a PowerPoint helper or launcher');
+      assert.equal(await page.locator('#powerpoint-helper-source, #powerpoint-launcher-source').count(), 0,
+        'the single-file app must not embed PowerPoint helper programs');
+      assert.doesNotMatch(fs.readFileSync(path.join(root, 'index.html'), 'utf8'),
+        /Convert-PptxWithPowerPoint|powerpoint-(?:helper|launcher)-(?:button|source)|downloadHelper/,
+        'legacy PowerPoint filenames, embedded sources and download handlers must be absent from the app');
+    }
+    await expectNoPowerPointIntegration();
 
     async function select(filename) {
       await page.locator('#file-input').setInputFiles(filename);
@@ -168,11 +179,58 @@ async function browserContract() {
       };
     }
 
+    async function capturePreview(filename) {
+      await page.evaluate(() => scrollTo(0, 0));
+      await page.locator('#preview-frame').scrollIntoViewIfNeeded();
+      const frame = page.frameLocator('#preview-frame');
+      let fit = false;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const outer = await page.locator('#preview-frame').boundingBox();
+        const size = await frame.locator('body').evaluate(() => ({
+          viewport: innerWidth, slide: document.querySelector('.slide-shell').getBoundingClientRect().width,
+        }));
+        if (outer && size.viewport >= outer.width - 4 && size.slide >= outer.width * 0.8) { fit = true; break; }
+        await page.waitForTimeout(50);
+      }
+      assert.ok(fit, 'the preview must fill the iframe width after layout settles');
+      // fullPage:true in this Chromium version temporarily resizes sandboxed
+      // iframes while capturing. A viewport screenshot preserves actual layout.
+      await page.screenshot({ path: path.join(temporary, filename) });
+    }
+
     // Establish a baseline from the exact bytes encrypted by an independent
     // implementation, then compare slide contents, order, tables and media.
     await select(reference('complex-plain.pptx'));
     await convert();
     const baseline = await expectDeck();
+
+    if (noPowerPointUIOnly) {
+      await capturePreview('no-powerpoint-local-conversion.png');
+      // These benign markers test the new stop-and-explain flow without
+      // regenerating or rerunning the unchanged password encryption fixtures.
+      const CFB = require('cfb');
+      const cfb = CFB.utils.cfb_new();
+      CFB.utils.cfb_add(cfb, '\u0006DataSpaces/DataSpaceInfo/DRMEncryptedDataSpace', Buffer.from('benign marker'));
+      for (const [name, buffer, code] of [
+        ['drm-marker.pptx', CFB.write(cfb, { type: 'buffer' }), 'DRM_PROTECTED'],
+        ['unknown.pptx', Buffer.from('Benign unrelated bytes; no document format implied.'), 'UNKNOWN_CONTAINER'],
+      ]) {
+        await select({ name, mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', buffer });
+        await convert();
+        await expectError(code);
+        const guidance = (await page.locator('#status-text').innerText()) + '\n' +
+          (await page.locator('#protection-options').innerText());
+        assert.doesNotMatch(guidance, /(?:변환|PowerPoint)\s*도우미|PowerPoint에서[^\n]*(?:저장|내보내|변환)|PowerPoint를\s*실행(?:해|하)|powershell|\.cmd/i,
+          'unreadable protection must not trigger a PowerPoint-dependent fallback');
+        assert.match(guidance, /승인|허용|SDK|공식\s*연동/, 'protected input must explain the approved-copy or official-integration requirement');
+        await expectNoPowerPointIntegration();
+      }
+      assert.deepEqual(failedRequests, [], 'the no-PowerPoint file:// workflow must make zero HTTP(S) requests');
+      assert.deepEqual(errors, [], 'the no-PowerPoint workflow must have no uncaught browser errors');
+      console.log(`PASS no-PowerPoint UI contract; no helper UI/embedded programs; ordinary local conversion; DRM/unknown stop with guidance; zero HTTP(S); screenshots=${temporary}`);
+      await context.close();
+      return;
+    }
 
     await page.locator('#protection-options').evaluate(element => { element.open = true; });
     await page.locator('#document-password').fill('must-clear-on-new-file');
@@ -183,7 +241,7 @@ async function browserContract() {
     await expectError('INCORRECT_PASSWORD');
     await convert(PASSWORD);
     assert.deepEqual(await expectDeck(), baseline, 'independently encrypted Agile deck must render as the exact plaintext deck');
-    await page.screenshot({ path: path.join(temporary, 'encrypted-agile-success.png'), fullPage: true });
+    await capturePreview('encrypted-agile-success.png');
 
     const exportedPromise = page.waitForEvent('download');
     await page.locator('#download-button').click();
@@ -226,32 +284,16 @@ async function browserContract() {
       await expectError(codes);
       if (name === 'drm-marker.pptx') {
         await page.locator('#diagnostics').evaluate(element => { element.open = true; });
-        await page.screenshot({ path: path.join(temporary, 'drm-format-diagnostic.png'), fullPage: true });
+        await page.locator('#diagnostics').scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.join(temporary, 'drm-format-diagnostic.png') });
       }
     }
 
-    // The UI must ship the reviewed local helper bytes exactly. PowerPoint COM
-    // execution is Windows-only and is not simulated by this browser test.
-    await page.locator('#protection-options').evaluate(element => { element.open = true; });
-    for (const [button, filename] of [
-      ['#powerpoint-helper-button', 'Convert-PptxWithPowerPoint.ps1'],
-      ['#powerpoint-launcher-button', 'Convert-PptxWithPowerPoint.cmd'],
-    ]) {
-      const downloadPromise = page.waitForEvent('download');
-      await page.locator(button).click();
-      const download = await downloadPromise;
-      assert.equal(download.suggestedFilename(), filename);
-      const downloadedFile = path.join(temporary, filename);
-      await download.saveAs(downloadedFile);
-      const actual = fs.readFileSync(downloadedFile);
-      assert.deepEqual(actual, fs.readFileSync(path.join(root, 'tools', filename)), 'downloaded helper must match reviewed source bytes');
-      if (filename.endsWith('.ps1')) assert.deepEqual(actual.subarray(0, 3), Buffer.from([0xef, 0xbb, 0xbf]),
-        'Windows PowerShell 5.1 needs the UTF-8 BOM for Korean text');
-    }
+    await expectNoPowerPointIntegration();
 
     assert.deepEqual(failedRequests, [], 'the file:// app, decryption, previews, and export may not make any HTTP(S) requests');
     assert.deepEqual(errors, [], 'protection handling should have no uncaught browser errors');
-    console.log(`PASS file:// protection flow; Agile + Standard + valid prefixed ZIP; truthful errors; password hygiene; exact local helper downloads; browser=${executablePath}; screenshots=${temporary}`);
+    console.log(`PASS file:// protection flow; Agile + Standard + valid prefixed ZIP; truthful errors; password hygiene; no PowerPoint helper; browser=${executablePath}; screenshots=${temporary}`);
     await context.close();
   } finally {
     await browser.close();
@@ -259,9 +301,12 @@ async function browserContract() {
 }
 
 async function main() {
-  await generateFixtures();
-  await moduleContract();
-  if (!process.argv.includes('--module-only')) await browserContract();
+  const noPowerPointUIOnly = process.argv.includes('--no-powerpoint-ui-only');
+  if (!noPowerPointUIOnly) {
+    await generateFixtures();
+    await moduleContract();
+  }
+  if (!process.argv.includes('--module-only')) await browserContract({ noPowerPointUIOnly });
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

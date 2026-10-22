@@ -40,7 +40,7 @@ function invalid(details) {
 }
 
 function unsupported(details, message) {
-  return failure('UNSUPPORTED_ENCRYPTION', message || '이 문서의 암호화 방식은 지원하지 않습니다. 권한이 있는 PowerPoint에서 일반 PPTX로 저장한 뒤 다시 시도해 주세요.', details);
+  return failure('UNSUPPORTED_ENCRYPTION', message || '이 문서의 암호화 방식은 지원하지 않습니다. 사용이 허용된 일반 PPTX 사본을 선택해 주세요.', details);
 }
 
 function checkPassword(password, details) {
@@ -83,19 +83,19 @@ function parseContainer(bytes) {
   for (const {entry, path} of entries) {
     if (typeof path !== 'string') throw invalid('CFB · 디렉터리 이름 오류');
     if (path.split('/').some((name) => drmName.test(name))) {
-      throw failure('DRM_PROTECTED', '조직의 DRM·IRM으로 보호된 문서입니다. 권한이 있는 PowerPoint나 보안 프로그램에서 허용된 내보내기를 사용해 주세요.', 'CFB · Microsoft IRM 데이터 공간');
+      throw failure('DRM_PROTECTED', '조직의 DRM·IRM으로 보호된 문서입니다. 브라우저에서 읽을 수 있는 일반 PPTX 사본을 회사에서 허용한 절차로 준비하거나 공식 연동을 사용해야 합니다.', 'CFB · Microsoft IRM 데이터 공간');
     }
     // Some producers keep the transform reference only inside a DataSpaces stream.
     if (entry.type === 2 && /(?:^|\/)\x06DataSpaces\//i.test(path) && entry.content) {
       if (entry.content.length > MAX_INFO_BYTES) throw invalid('CFB · 데이터 공간 정보 크기 초과');
       const markerText = Buffer.from(entry.content).toString('utf16le');
       if (/DRMEncrypted(?:DataSpace|Transform)|Microsoft\.Metadata\.DRMTransform|\x09(?:LZX)?DRM(?:DataSpace|Transform)/i.test(markerText)) {
-        throw failure('DRM_PROTECTED', '조직의 DRM·IRM으로 보호된 문서입니다. 권한이 있는 PowerPoint나 보안 프로그램에서 허용된 내보내기를 사용해 주세요.', 'CFB · Microsoft IRM 변환 정보');
+        throw failure('DRM_PROTECTED', '조직의 DRM·IRM으로 보호된 문서입니다. 브라우저에서 읽을 수 있는 일반 PPTX 사본을 회사에서 허용한 절차로 준비하거나 공식 연동을 사용해야 합니다.', 'CFB · Microsoft IRM 변환 정보');
       }
     }
   }
   if (entries.some(({entry}) => entry.type === 2 && /^PowerPoint Document$/i.test(entry.name))) {
-    throw failure('LEGACY_PPT', '예전 PowerPoint PPT 형식입니다. PowerPoint에서 .pptx 형식으로 다시 저장해 주세요.', 'CFB · PowerPoint Document');
+    throw failure('LEGACY_PPT', '예전 PowerPoint PPT 형식입니다. 이 변환기에는 .pptx 형식으로 저장된 사본이 필요합니다.', 'CFB · PowerPoint Document');
   }
   const stream = (name) => {
     const matches = entries.filter(({path}) => path.toLowerCase() === (root + name).toLowerCase());
@@ -230,7 +230,7 @@ async function parseAgile(info) {
   const key = cipherParameters(passwordNode);
   key.spinCount = numberAttribute(passwordNode, 'spinCount');
   if (key.spinCount > MAX_SPIN_COUNT) {
-    throw unsupported('Office Agile · 암호 반복 횟수 한도 초과', '이 문서의 암호 반복 횟수가 지원 한도인 1,000,000회를 넘습니다. 권한이 있는 PowerPoint에서 일반 PPTX로 저장해 주세요.');
+    throw unsupported('Office Agile · 암호 반복 횟수 한도 초과', '이 문서의 암호 반복 횟수가 지원 한도인 1,000,000회를 넘습니다. 사용이 허용된 일반 PPTX 사본을 선택해 주세요.');
   }
   key.encryptedVerifierHashInput = binaryAttribute(passwordNode, 'encryptedVerifierHashInput', [16]);
   key.encryptedVerifierHashValue = binaryAttribute(passwordNode, 'encryptedVerifierHashValue', [Math.ceil(key.hashSize / 16) * 16]);

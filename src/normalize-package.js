@@ -21,10 +21,10 @@ async function normalizePptxPackage(bytes) {
     const startsZip = bytes[0] === 0x50 && bytes[1] === 0x4b;
     const encryptedZip = /encrypted zip/i.test(String(error && error.message));
     const failure = new Error(encryptedZip
-      ? 'ZIP 자체에 암호가 설정된 형식은 지원하지 않습니다. PowerPoint에서 열 수 있다면 아래 PowerPoint 변환 도우미를 사용해 주세요.'
+      ? 'ZIP 자체에 암호가 설정된 형식은 지원하지 않습니다. 사용이 허용된 일반 PPTX 사본을 선택해 주세요.'
       : startsZip
-        ? 'PPTX의 압축 구조를 끝까지 읽지 못했습니다. 파일이 불완전하거나 현재 엔진이 지원하지 않는 구조일 수 있습니다. PowerPoint에서 열리는지 확인해 주세요.'
-        : '브라우저가 받은 데이터를 일반 PPTX 압축 구조로 읽을 수 없습니다. 회사 DRM 등으로 보호된 파일일 수도 있습니다. PowerPoint에서 정상적으로 열린다면 아래 PowerPoint 변환 도우미를 사용해 주세요.');
+        ? 'PPTX의 압축 구조를 끝까지 읽지 못했습니다. 파일이 불완전하거나 현재 엔진이 지원하지 않는 구조일 수 있습니다. 정상적인 PPTX 사본인지 확인해 주세요.'
+        : '브라우저가 받은 데이터를 일반 PPTX 압축 구조로 읽을 수 없습니다. NASCA+SD 등 회사 DRM으로 보호된 파일일 수도 있습니다. 보호된 경우 회사에서 허용한 일반 PPTX 사본이나 공식 연동이 필요합니다.');
     failure.code = encryptedZip ? 'UNSUPPORTED_ENCRYPTION' : startsZip ? 'INVALID_PACKAGE' : 'UNKNOWN_CONTAINER';
     throw failure;
   }
@@ -57,7 +57,7 @@ async function normalizePptxPackage(bytes) {
   }
 
   if (!zip.file('[Content_Types].xml') || !zip.file('_rels/.rels') || !zip.file('ppt/presentation.xml')) {
-    const failure = new Error('압축 파일은 읽었지만 변환에 필요한 PowerPoint 문서 구성을 찾지 못했습니다. PowerPoint에서 정상적으로 열리는 파일은 PowerPoint 변환 도우미로 처리할 수 있습니다.');
+    const failure = new Error('압축 파일은 읽었지만 변환에 필요한 PPTX 문서 구성을 찾지 못했습니다. 지원되는 일반 PPTX 사본인지 확인해 주세요.');
     failure.code = 'UNSUPPORTED_PACKAGE';
     throw failure;
   }

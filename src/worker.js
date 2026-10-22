@@ -64,10 +64,10 @@ function summarizeDiagnostics(json) {
 function friendlyError(error) {
   const message = String(error?.message || error || '');
   if (/[가-힣]/.test(message)) return message;
-  if (/encrypt|password|compound|OLE2/i.test(message)) return '문서의 암호 또는 보호 방식을 확인하지 못했습니다. 문서 열기 암호를 입력하거나 PowerPoint 변환 도우미를 사용해 주세요.';
+  if (/encrypt|password|compound|OLE2/i.test(message)) return '문서의 암호 또는 보호 방식을 확인하지 못했습니다. 문서 열기 암호를 확인해 주세요. 회사 DRM 문서는 허용된 일반 PPTX 사본이나 공식 연동이 필요합니다.';
   if (/memory|allocation|too (?:large|many)|limit|out of bounds/i.test(message)) return '파일을 처리할 수 있는 메모리 또는 크기 한도를 넘었습니다. 슬라이드나 이미지 크기를 줄인 뒤 다시 시도해 주세요.';
-  if (/zip|archive|invalid|corrupt|xml|missing|not found|parse/i.test(message)) return 'PPTX 파일을 읽지 못했습니다. 손상되었거나 지원되지 않는 형식입니다. PowerPoint에서 .pptx로 다시 저장해 주세요.';
-  return '파일을 변환하지 못했습니다. PowerPoint에서 .pptx로 다시 저장하거나 다른 파일로 확인해 주세요.';
+  if (/zip|archive|invalid|corrupt|xml|missing|not found|parse/i.test(message)) return 'PPTX 파일을 읽지 못했습니다. 손상되었거나 지원되지 않는 형식일 수 있습니다. 정상적인 PPTX 사본인지 확인해 주세요.';
+  return '파일을 변환하지 못했습니다. 지원되는 PPTX 사본이나 다른 파일로 확인해 주세요.';
 }
 
 self.onmessage = async function (event) {
@@ -96,7 +96,7 @@ self.onmessage = async function (event) {
     const width = info.widthPx;
     const height = info.heightPx;
     if (!info.slideCount) throw new Error('변환할 슬라이드가 없습니다.');
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > 30000 || height > 30000) throw new Error('지원하지 않는 슬라이드 크기입니다. PowerPoint에서 슬라이드 크기를 다시 지정해 주세요.');
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > 30000 || height > 30000) throw new Error('지원하지 않는 슬라이드 크기입니다. 슬라이드 크기를 조정한 PPTX 사본이 필요합니다.');
     const range = selectedSlides(options.slideRange, info.slideCount);
     self.postMessage({type: 'progress', id, message: '텍스트·이미지·도형을 HTML로 변환하는 중입니다…'});
     result = convert_with_options_metadata(data, true, !!options.includeHidden, range, 1);

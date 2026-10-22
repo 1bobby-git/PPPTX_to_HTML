@@ -14,8 +14,7 @@
     ready: $('result-ready'), subtitle: $('result-subtitle'), warnings: $('warnings'),
     warningCount: $('warning-count'), warningList: $('warning-list'),
     password: $('document-password'), protection: $('protection-options'),
-    diagnostics: $('diagnostics'), diagnosticsText: $('diagnostics-text'),
-    helper: $('powerpoint-helper-button'), launcher: $('powerpoint-launcher-button')
+    diagnostics: $('diagnostics'), diagnosticsText: $('diagnostics-text')
   };
 
   let selectedFile = null;
@@ -288,26 +287,6 @@
       convert();
     }
   });
-  function downloadHelper(sourceId, filename) {
-    const source = $(sourceId);
-    if (!source || !source.textContent.trim()) {
-      setStatus('변환 도우미가 포함되지 않은 파일입니다. 최신 index.html을 다시 받아 주세요.', 'error');
-      return;
-    }
-    const binary = atob(source.textContent.trim());
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const url = URL.createObjectURL(new Blob([bytes], {type: 'application/octet-stream'}));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
-  }
-  ui.helper.addEventListener('click', function () { downloadHelper('powerpoint-helper-source', 'Convert-PptxWithPowerPoint.ps1'); });
-  ui.launcher.addEventListener('click', function () { downloadHelper('powerpoint-launcher-source', 'Convert-PptxWithPowerPoint.cmd'); });
   ui.cancel.addEventListener('click', function () {
     if (!busy) return;
     ++jobId;

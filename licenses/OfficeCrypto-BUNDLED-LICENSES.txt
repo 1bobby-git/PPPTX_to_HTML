@@ -1395,7 +1395,7 @@ SOFTWARE.
 
 ------------------------------------------------------------------------
 
-hash-base 3.0.5 (MIT)
+hash-base 3.1.2 (MIT)
 The MIT License (MIT)
 
 Copyright (c) 2016 Kirill Fomichev
@@ -1421,7 +1421,7 @@ THE SOFTWARE.
 
 ------------------------------------------------------------------------
 
-hash-base 3.1.2 (MIT)
+hash-base 3.0.5 (MIT)
 The MIT License (MIT)
 
 Copyright (c) 2016 Kirill Fomichev
