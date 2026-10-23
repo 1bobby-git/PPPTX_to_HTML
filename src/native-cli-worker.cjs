@@ -29,7 +29,8 @@ function exportSafe(html, width, height, title, warnings, slideCount, chartData)
   try {
     const source = fs.readFileSync(path.join(root, 'src/exporter.js'), 'utf8');
     const viewerCss = fs.readFileSync(path.join(root, 'src/viewer.css'), 'utf8');
-    const viewerScript = fs.readFileSync(path.join(root, 'src/viewer.js'), 'utf8');
+    // Hash exactly the LF text the HTML parser will execute on every OS.
+    const viewerScript = fs.readFileSync(path.join(root, 'src/viewer.js'), 'utf8').replace(/\r\n?/g, '\n');
     const hash = crypto.createHash('sha256').update(viewerScript).digest('base64');
     let script = source;
     for (const [marker, value] of [

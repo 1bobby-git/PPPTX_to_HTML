@@ -44,7 +44,7 @@
 - 표의 행·열 병합, EMF/WMF의 실제 브라우저 변환, SmartArt와 이미지 자르기에는 명확한 한계가 있다.
 - 원문 텍스트·링크를 문자열 HTML로 합치는 경로를 그대로 가져오지 않는다. 현재 exporter의 sanitize·URL 제한·CSP를 유지한다.
 
-유용한 부분은 `extractChartData`가 OOXML의 계열·범주·값 캐시를 읽는다는 점이다. 현재 개발 중인 대체 표시는 이 **데이터 추출과 렌더링의 분리**를 참고하며 NVD3나 원저작 코드를 가져오지 않는다. 캐시가 없거나 오래되었으면 실제 최신 차트 데이터를 보장할 수 없고, 외부 workbook을 다운로드해서 보완해서도 안 된다. 경고를 유지하면서 복구 가능한 데이터만 명확한 대체 표시로 제공하는 범위다.
+유용한 부분은 `extractChartData`가 OOXML의 계열·범주·값 캐시를 읽는다는 점이다. 이번에 구현한 대체 표시는 이 **데이터 추출과 렌더링의 분리**를 참고하며 NVD3나 원저작 코드를 가져오지 않는다. 캐시가 없거나 오래되었으면 실제 최신 차트 데이터를 보장할 수 없고, 외부 workbook을 다운로드해서 보완해서도 안 된다. 경고를 유지하면서 복구 가능한 데이터만 명확한 대체 표시로 제공하는 범위다.
 
 ## 2. 현대 TypeScript 구현: 대체 엔진보다 공통 계약 개선
 
@@ -104,7 +104,15 @@ DeckMason의 import는 실제 존재한다. 다섯 저장소를 모두 단순히
 
 로컬에서 실제 검증한 환경은 **Linux, Node 24, Chromium·Firefox**다. `.github/workflows/compatibility.yml`에는 Windows·macOS·Linux의 Node 24·Chromium, 추가 Linux Firefox·WebKit 검사를 구성했다. 각 커밋의 통과 상태는 GitHub Actions 결과를 기준으로 판단한다. WebKit은 로컬 환경의 native 라이브러리 부재로 실행하지 못했으며, Playwright WebKit 검사도 실제 Safari·iOS 기기 검증을 대신하지 않는다. responsive viewer가 있다는 사실은 모든 화면·브라우저·입력 장치에서 실제 사용성을 확인했다는 뜻이 아니다.
 
-Firefox에서 생성 fixture의 PNG CRC 오류를 확인해 정상 이미지로 교체했다. 그 뒤 전체 오프라인 회귀는 통과했다. 한 실행에서 Blob iframe 대기 시간이 초과한 적이 있으나 단독·전체 재실행에서 재현되지 않았다. 검사를 완화하거나 건너뛰지 않았다. 독립 암호 검증용 `tests/reference` 파일은 동일 bytes를 검증하는 고정 벡터로 유지했다.
+첫 [GitHub Actions 실행](https://github.com/1bobby-git/PPPTX_to_HTML/actions/runs/39879591262)에서는 Linux·macOS의 전체 경로와 Firefox가 통과했고, Windows·WebKit에서 추가 문제가 드러났다. Windows식 CRLF로 읽은 viewer의 해시는 HTML 파서가 LF로 정규화한 실제 스크립트와 달라 CSP가 실행을 차단한다. 실제 Chromium으로 이를 재현하여 빌드·Native exporter·웹 응답의 세 경로 모두 동일한 LF 소스로 해시를 계산하도록 수정했다. viewer 검사는 슬라이드 마크업의 존재뿐 아니라 선택 목록과 현재 슬라이드 초기화를 기다린 뒤 기존 조작 검증을 수행한다.
+
+WebKit의 Blob Worker는 생성자 반환 후 스크립트를 비동기로 읽을 수 있다. 생성 직후 URL을 폐기하던 코드를 첫 작업 메시지 또는 종료 시점에 정리하도록 바꿨다. [Playwright 공식 저장소의 재현과 maintainer 설명](https://github.com/microsoft/playwright/issues/33794)도 같은 자원 수명 문제를 확인한다. CSP나 네트워크 차단 조건을 완화하지 않았으며, 수정 후 플랫폼별 성공 여부는 해당 커밋의 Actions 결과로 확인한다.
+
+Firefox에서 생성 fixture의 PNG CRC 오류를 확인해 정상 이미지로 교체했다. 독립 암호 검증용 `tests/reference` 파일은 동일 bytes를 검증하는 고정 벡터로 유지했다.
+
+후속 검사에서는 Playwright 1.62.1 / Firefox r1538의 iframe 조회가 간헐적으로 멈췄다. 실제 iframe의 `src`는 Blob으로 바뀌었지만 검사 도구의 frame URL은 `about:blank`에 머무르고 DOM 조회가 끝나지 않았다. 공식 [Playwright #43124](https://github.com/microsoft/playwright/issues/43124)는 동일 버전의 실행 컨텍스트 회귀를 기록하며 [#43494](https://github.com/microsoft/playwright/pull/43494)의 r1564에서 수정했다. 앱의 iframe 교체나 검사 생략으로 우회하지 않았다.
+
+검토 시점의 안정판 1.64.1에는 이 수정이 포함되지 않아 **Firefox CI에만 공식 `1.65.0-alpha-2026-10-22`와 그에 대응하는 Firefox r1564를 정확히 고정**했다. 운영 의존성과 일반 Playwright 설치는 변경하지 않고 별도 임시 경로에서 검사 도구를 설치한다. 로컬에서도 이 조합으로 동일한 전체 오프라인 검사를 통과했다. Windows·macOS·Linux의 Chromium과 WebKit은 기존 고정 도구를 사용한다. 이 제한적인 사전 배포판 사용은 Firefox 검사 도구의 회귀를 해결하기 위한 것으로, 안정판 1.65 이상 채택 시 제거할 수 있다.
 
 현재 입력 처리·패키지 정규화·WASM 변환·공통 exporter·오프라인 viewer는 PowerPoint를 실행하지 않는 경로다. 저장소의 별도 legacy Python/LibreOffice 및 PowerPoint 도구의 존재를 이번 브라우저·Node 경로의 실행 의존성으로 해석하지 않는다. 참고 검토 때문에 사용자의 웹 흐름에 명령 입력을 추가하지 않는다.
 

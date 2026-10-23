@@ -94,6 +94,19 @@ function browserExecutable() {
     .find(filename => filename && fs.existsSync(filename));
 }
 
+async function waitForViewer(scope, expectedSlides) {
+  // Markup may become visible before the script installs controls/listeners.
+  // Script-owned DOM must exist; a CSP-blocked viewer still fails this gate.
+  await scope.locator('#ptv-select option[value="' + (expectedSlides - 1) + '"]')
+    .waitFor({state: 'attached', timeout: 30000});
+  await scope.locator('#ptv-slides > .slide-shell[aria-current="true"]')
+    .waitFor({state: 'attached', timeout: 30000});
+  assert.equal(await scope.locator('#ptv-select option').count(), expectedSlides,
+    'viewer must initialize one option per displayed slide');
+  assert.equal(await scope.locator('#ptv-slides > .slide-shell[aria-current="true"]').count(), 1,
+    'viewer must initialize exactly one current slide');
+}
+
 async function browserCheck(files) {
   const executablePath = browserExecutable();
   assert.ok(executablePath, 'Chromium is required for the native CLI file:// check');
@@ -107,18 +120,20 @@ async function browserCheck(files) {
     });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
-    async function open(filename) {
+    async function open(filename, expectedSlides) {
       await page.goto(pathToFileURL(filename).href);
       assert.equal(new URL(page.url()).protocol, 'file:');
       await page.locator('.pptx-container > .slide-shell').first().waitFor();
+      await waitForViewer(page, expectedSlides);
       return page.locator('.pptx-container > .slide-shell');
     }
-    let shells = await open(files.regular);
+    let shells = await open(files.regular, 3);
     assert.equal(await shells.count(), 3);
     const slideText = await page.locator('.slide').allTextContents();
     assert.match(slideText[0], /TABLE_FILE_TWO/);
     assert.match(slideText[1], /INTRO_FILE_ONE/);
     assert.match(slideText[2], /IMAGE_CHART_FILE_THREE/);
+    await page.locator('img').first().evaluate(image => image.decode());
     assert.ok(await page.locator('img').evaluateAll(images => images.some(img => img.complete && img.naturalWidth > 0)),
       'embedded image must decode from file://');
     await page.locator('#ptv-mode').click();
@@ -129,12 +144,12 @@ async function browserCheck(files) {
     await page.setViewportSize({width: 390, height: 844});
     const mobile = await page.evaluate(() => ({scroll: document.documentElement.scrollWidth, viewport: innerWidth}));
     assert.ok(mobile.scroll <= mobile.viewport + 1, `mobile overflow: ${JSON.stringify(mobile)}`);
-    shells = await open(files.hidden);
+    shells = await open(files.hidden, 4);
     assert.equal(await shells.count(), 4);
-    shells = await open(files.selected);
+    shells = await open(files.selected, 1);
     assert.equal(await shells.count(), 1);
     assert.match(await page.locator('.slide').first().textContent(), /INTRO_FILE_ONE/);
-    await open(files.hostile);
+    await open(files.hostile, 1);
     assert.equal(await page.evaluate(() => window.__pptxExecuted), undefined);
     assert.equal(await page.evaluate(() => window.__pptxTitleExecuted), undefined);
     assert.deepEqual(requests, [], `unexpected network requests: ${requests.join(', ')}`);

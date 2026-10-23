@@ -23,6 +23,7 @@
   let selectedFile = null;
   let resultUrl = null;
   let worker = null;
+  let workerUrl = null;
   let serverJob = null;
   let serverReady = !SERVER_MODE;
   let checkingServer = false;
@@ -86,6 +87,13 @@
     if (ui.retryConnection) ui.retryConnection.disabled = busy || checkingServer;
   }
 
+  function releaseWorkerUrl() {
+    if (workerUrl) {
+      URL.revokeObjectURL(workerUrl);
+      workerUrl = null;
+    }
+  }
+
   function stopWorker() {
     if (deadline !== null) {
       clearTimeout(deadline);
@@ -95,6 +103,7 @@
       worker.terminate();
       worker = null;
     }
+    releaseWorkerUrl();
     if (serverJob) {
       serverJob.abort();
       serverJob = null;
@@ -317,15 +326,14 @@
         finishJob('파일 크기가 올바르지 않습니다. 최대 64 MB(64 MiB)까지 지원합니다.', 'error');
         return;
       }
-      const objectUrl = URL.createObjectURL(new Blob([workerSource.textContent], { type: 'text/javascript' }));
-      try {
-        worker = new Worker(objectUrl);
-      } finally {
-        URL.revokeObjectURL(objectUrl);
-      }
+      // WebKit can fetch a Blob worker asynchronously after construction.
+      // Keep its URL until a message proves startup, or the job is stopped.
+      workerUrl = URL.createObjectURL(new Blob([workerSource.textContent], { type: 'text/javascript' }));
+      worker = new Worker(workerUrl);
       worker.onmessage = function (event) {
         const message = event.data;
         if (id !== jobId || !busy || !message || message.id !== id) return;
+        releaseWorkerUrl();
         if (message.type === 'progress') {
           setStatus(typeof message.message === 'string' && message.message ? message.message : '변환 중입니다…', 'working');
         } else if (message.type === 'result') {

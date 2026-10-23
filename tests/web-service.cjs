@@ -307,6 +307,19 @@ function browserExecutable() {
     .find(filename => filename && fs.existsSync(filename));
 }
 
+async function waitForViewer(scope, expectedSlides) {
+  // Markup may become visible before the script installs controls/listeners.
+  // Script-owned DOM must exist; a CSP-blocked viewer still fails this gate.
+  await scope.locator('#ptv-select option[value="' + (expectedSlides - 1) + '"]')
+    .waitFor({state: 'attached', timeout: 30000});
+  await scope.locator('#ptv-slides > .slide-shell[aria-current="true"]')
+    .waitFor({state: 'attached', timeout: 30000});
+  assert.equal(await scope.locator('#ptv-select option').count(), expectedSlides,
+    'viewer must initialize one option per displayed slide');
+  assert.equal(await scope.locator('#ptv-slides > .slide-shell[aria-current="true"]').count(), 1,
+    'viewer must initialize exactly one current slide');
+}
+
 async function browserCheck(service) {
   const executablePath = browserExecutable();
   assert.ok(executablePath, 'Chromium is required for the web service UI check');
@@ -338,10 +351,12 @@ async function browserCheck(service) {
     const preview = page.frameLocator('#preview-frame');
     await preview.locator('.slide-shell').first().waitFor();
     assert.equal(await preview.locator('.slide-shell').count(), 3);
+    await waitForViewer(preview, 3);
     await preview.locator('#ptv-mode').click();
     assert.equal(await preview.locator('#ptv-mode').getAttribute('aria-pressed'), 'true');
     await preview.locator('#ptv-next').click();
     assert.equal(await preview.locator('#ptv-select').inputValue(), '1');
+    await preview.locator('img').first().evaluate(image => image.decode());
     assert.ok(await preview.locator('img').evaluateAll(images => images.some(image => image.complete && image.naturalWidth > 0)));
     const screenshots = path.join(root, 'test-results');
     fs.mkdirSync(screenshots, {recursive: true});
@@ -356,6 +371,7 @@ async function browserCheck(service) {
     const outputPage = await context.newPage();
     await outputPage.goto(pathToFileURL(saved).href);
     await outputPage.locator('.slide-shell').first().waitFor();
+    await waitForViewer(outputPage, 3);
     assert.equal(await outputPage.title(), '사용자 웹 변환');
     await outputPage.locator('#ptv-mode').click();
     await outputPage.locator('#ptv-next').click();

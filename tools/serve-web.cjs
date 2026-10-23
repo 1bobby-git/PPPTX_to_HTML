@@ -312,7 +312,9 @@ function createWebServer(options = {}) {
   const activeJobs = new Set();
   let closing = false;
   let closePromise;
-  const viewerHash = crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, 'src/viewer.js'))).digest('base64');
+  // Blob previews inherit this policy; match the native exporter's LF source.
+  const viewerScript = fs.readFileSync(path.join(ROOT, 'src/viewer.js'), 'utf8').replace(/\r\n?/g, '\n');
+  const viewerHash = crypto.createHash('sha256').update(viewerScript).digest('base64');
   const csp = "default-src 'none'; script-src 'self' 'sha256-" + viewerHash + "'; style-src 'self' 'unsafe-inline'; " +
     "img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'self'; frame-src blob:; " +
     "worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";

@@ -10,7 +10,7 @@ const read = (path) => readFile(join(root, path), 'utf8');
 const enginePath = 'node_modules/@briank-dev/pptx-to-html/';
 const [shell, css, app, adapter, exporterTemplate, viewer, viewerCss, glueSource, wasm, purifierSource, engineLicense, purifierLicense, zipSource, zipLicense, normalizer, conversionCore] = await Promise.all([
   read('src/shell.html'), read('src/styles.css'), read('src/app.js'), read('src/worker.js'),
-  read('src/exporter.js'), read('src/viewer.js'), read('src/viewer.css'),
+  read('src/exporter.js'), read('src/viewer.js').then(source => source.replace(/\r\n?/g, '\n')), read('src/viewer.css'),
   read(enginePath + 'pptx2html_wasm.js'), readFile(join(root, enginePath, 'pptx2html_wasm_bg.wasm')),
   read('node_modules/dompurify/dist/purify.min.js'), read(enginePath + 'LICENSE'), read('node_modules/dompurify/LICENSE'),
   read('node_modules/jszip/dist/jszip.min.js'), read('node_modules/jszip/LICENSE.markdown'), read('src/normalize-package.js'),
@@ -47,6 +47,8 @@ function replaceOnce(source, marker, replacement) {
   return source.replace(marker, () => replacement);
 }
 function scriptSafe(source) { return source.replace(/<\/script/gi, '<\\/script'); }
+// HTML parsing normalizes CRLF/CR before CSP checks. The viewer above uses the
+// same LF text for both embedding and hashing, including on Windows checkouts.
 function hash(source) { return createHash('sha256').update(source).digest('base64'); }
 
 // Package is pinned. Transform its ESM export syntax into a classic Blob Worker.

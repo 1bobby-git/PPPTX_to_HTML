@@ -6,7 +6,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { chromium, firefox, webkit } = require('playwright');
+// CI can select an isolated, pinned test driver without changing runtime deps.
+const { chromium, firefox, webkit } = require(process.env.PPTX_TEST_PLAYWRIGHT || 'playwright');
 const JSZip = require('jszip');
 
 const root = path.resolve(__dirname, '..');
@@ -72,10 +73,12 @@ async function main() {
       failedRequests.push(route.request().url());
       return route.abort('internetdisconnected');
     });
-    const page = await context.newPage();
     const errors = [];
-    page.on('pageerror', error => errors.push(error.message));
-    page.on('console', message => { if (message.type() === 'error') errors.push('console: ' + message.text()); });
+    context.on('page', opened => {
+      opened.on('pageerror', error => errors.push(error.message));
+      opened.on('console', message => { if (message.type() === 'error') errors.push('console: ' + message.text()); });
+    });
+    const page = await context.newPage();
     await page.goto(pathToFileURL(index).href);
     async function waitForConversion() {
       await page.waitForFunction(() => !document.querySelector('#download-button').disabled ||
@@ -83,6 +86,25 @@ async function main() {
       const status = await page.locator('#status-text').innerText();
       assert.equal(await page.locator('#download-button').isEnabled(), true,
         `conversion failed: ${status}; browser errors: ${errors.join(' | ')}`);
+    }
+    async function waitForViewer(scope, expectedSlides) {
+      // Slide markup precedes the final inline viewer script. On slower parsers
+      // (including Windows CI) a visible slide can still have an empty select.
+      // Wait for script-owned DOM, then keep the behavioral assertions below.
+      // A blocked or broken viewer must time out here rather than pass silently.
+      try {
+        await scope.locator('#ptv-select option[value="' + (expectedSlides - 1) + '"]')
+          .waitFor({state: 'attached', timeout: 30000});
+        await scope.locator('#ptv-slides > .slide-shell[aria-current="true"]')
+          .waitFor({state: 'attached', timeout: 30000});
+      } catch (error) {
+        throw new Error('Viewer did not initialize ' + expectedSlides + ' slide controls; browser errors (including CSP): ' +
+          (errors.join(' | ') || 'none captured'), {cause: error});
+      }
+      assert.equal(await scope.locator('#ptv-select option').count(), expectedSlides,
+        'viewer must initialize one option per displayed slide');
+      assert.equal(await scope.locator('#ptv-slides > .slide-shell[aria-current="true"]').count(), 1,
+        'viewer must initialize exactly one current slide');
     }
     assert.equal(new URL(page.url()).protocol, 'file:');
     assert.equal(await page.locator('#convert-button').isDisabled(), true);
@@ -96,6 +118,7 @@ async function main() {
     await page.locator('#preview-frame').waitFor({ state: 'visible' });
     const frame = page.frameLocator('#preview-frame');
     await frame.locator('.slide').first().waitFor({ timeout: 30000 });
+    await waitForViewer(frame, 3);
     assert.equal(await frame.locator('.slide').count(), 3, 'hidden slide excluded by default');
     assert.equal(await frame.locator('#ptv-select').inputValue(), '0', 'visible first slide should remain selected');
     const text = await frame.locator('body').innerText();
@@ -142,6 +165,7 @@ async function main() {
     const standalone = await context.newPage();
     await standalone.goto(pathToFileURL(exported).href);
     await standalone.locator('.slide').first().waitFor();
+    await waitForViewer(standalone, 3);
     assert.equal(await standalone.locator('.slide').count(), 3);
     assert.ok((await standalone.locator('body').innerText()).includes('안녕하세요 오프라인'));
     assert.ok(await standalone.locator('table').count() > 0);
@@ -171,6 +195,7 @@ async function main() {
     await waitForConversion();
     const directChart = page.frameLocator('#preview-frame');
     await directChart.locator('.chart-direct svg').waitFor();
+    await waitForViewer(directChart, 1);
     assert.ok(await directChart.locator('.chart-direct svg path').count() >= 3, 'pie segments should be SVG paths');
     const pieText = await directChart.locator('.chart-direct').innerText();
     for (const label of ['Mon', 'Tue', 'Wed', '22%', '44%', '33%']) assert.ok(pieText.includes(label), `missing chart value: ${label}`);
@@ -182,6 +207,7 @@ async function main() {
     const piePage = await context.newPage();
     await piePage.goto(pathToFileURL(pieExport).href);
     await piePage.locator('.chart-direct svg').waitFor();
+    await waitForViewer(piePage, 1);
     assert.ok(await piePage.locator('.chart-direct svg path').count() >= 3);
     await piePage.screenshot({ path: path.join(tmp, 'chart.png'), fullPage: true });
     await piePage.close();
@@ -194,6 +220,7 @@ async function main() {
     await page.locator('#convert-button').click();
     await waitForConversion();
     await frame.locator('.slide').first().waitFor();
+    await waitForViewer(frame, 1);
     assert.equal(await frame.locator('.slide').count(), 1);
     assert.ok((await frame.locator('.slide').first().innerText()).includes('INTRO_FILE_ONE'));
 
@@ -202,6 +229,7 @@ async function main() {
     await page.locator('#convert-button').click();
     await waitForConversion();
     await frame.locator('.slide').first().waitFor();
+    await waitForViewer(frame, 1);
     assert.equal(await frame.locator('.slide').count(), 1);
     assert.ok((await frame.locator('body').innerText()).includes('HIDDEN_FILE_FOUR'));
 
@@ -222,6 +250,7 @@ async function main() {
     await page.waitForFunction(() => !document.querySelector('#download-button').disabled || document.querySelector('#status-line').dataset.tone === 'error', null, { timeout: 120000 });
     if (await page.locator('#download-button').isEnabled()) {
       const hostileFrame = page.frameLocator('#preview-frame');
+      await waitForViewer(hostileFrame, 1);
       assert.ok((await hostileFrame.locator('body').innerText()).includes('<script>'));
       assert.equal(await hostileFrame.locator('body').evaluate(() => window.__pptxExecuted || 0), 0);
     }

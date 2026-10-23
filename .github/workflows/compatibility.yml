@@ -54,7 +54,19 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Install WebKit test browser
+        if: matrix.browser == 'webkit'
+        run: npx playwright install --with-deps webkit
+      # Firefox r1536+ loses some iframe execution contexts in the test driver.
+      # The official r1564 fix is not in stable 1.64.1. Keep its paired driver
+      # isolated and exactly pinned; remove this when adopting stable 1.65+.
+      # https://github.com/microsoft/playwright/issues/43124
+      - name: Install Firefox driver with iframe regression fix
+        if: matrix.browser == 'firefox'
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pptx-firefox-test" --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright@1.65.0-alpha-2026-10-22
+          node "$RUNNER_TEMP/pptx-firefox-test/node_modules/playwright/cli.js" install --with-deps firefox
+          echo "PPTX_TEST_PLAYWRIGHT=$RUNNER_TEMP/pptx-firefox-test/node_modules/playwright" >> "$GITHUB_ENV"
       - run: npm run build
       - run: npm run test:fixtures
       - run: node tests/offline.cjs
