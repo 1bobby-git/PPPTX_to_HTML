@@ -106,6 +106,25 @@ async function main() {
       assert.equal(await scope.locator('#ptv-slides > .slide-shell[aria-current="true"]').count(), 1,
         'viewer must initialize exactly one current slide');
     }
+    async function resizeAndCheckViewer(viewer, viewport) {
+      await viewer.setViewportSize(viewport);
+      await viewer.waitForFunction(() => {
+        const host = document.getElementById('ptv-slides');
+        const shell = host.querySelector('.slide-shell:not([hidden])');
+        const slide = shell.querySelector(':scope > .slide');
+        const outer = shell.getBoundingClientRect();
+        const inner = slide.getBoundingClientRect();
+        const availableWidth = Math.min(Number(document.body.dataset.ptvWidth), host.clientWidth);
+        const availableHeight = Math.min(Number(document.body.dataset.ptvHeight),
+          innerHeight - document.getElementById('ptv-toolbar').getBoundingClientRect().height);
+        const single = document.body.classList.contains('ptv-single');
+        // Check the scaled slide as well as its clipped shell: an old transform
+        // must not pass merely because max-width hides the overflowing content.
+        return Math.abs(outer.width - inner.width) < 1 && Math.abs(outer.height - inner.height) < 1 &&
+          inner.width <= availableWidth + 1 && (!single || inner.height <= availableHeight + 1) &&
+          (inner.width >= availableWidth * 0.8 || (single && inner.height >= availableHeight * 0.8));
+      }, null, {timeout: 10000});
+    }
     assert.equal(new URL(page.url()).protocol, 'file:');
     assert.equal(await page.locator('#convert-button').isDisabled(), true);
 
@@ -173,10 +192,19 @@ async function main() {
     assert.ok(await standalone.locator('img').evaluateAll(images => images.some(img => img.complete && img.naturalWidth > 0)),
       'an embedded image must decode after export');
     assert.ok(await standalone.locator('svg').count() > 0);
+    // A host-width change forces the observer to resize its own descendants.
+    // The final zero-error assertion also catches ResizeObserver delivery loops.
+    for (const viewport of [{width: 960, height: 850}, {width: 640, height: 850}, {width: 1280, height: 850}]) {
+      await resizeAndCheckViewer(standalone, viewport);
+    }
     await standalone.locator('#ptv-mode').click();
     assert.equal(await standalone.locator('#ptv-mode').getAttribute('aria-pressed'), 'true');
     assert.equal(await standalone.locator('#ptv-slides > .slide-shell:visible').count(), 1);
     assert.equal(await standalone.locator('#ptv-prev').isDisabled(), true);
+    // The host can keep its size when only viewport height changes. A window
+    // resize must still refit single-slide mode in both directions.
+    await resizeAndCheckViewer(standalone, {width: 1280, height: 500});
+    await resizeAndCheckViewer(standalone, {width: 1280, height: 850});
     await standalone.locator('#ptv-next').click();
     assert.equal(await standalone.locator('#ptv-select').inputValue(), '1');
     await standalone.locator('#ptv-select').selectOption('2');

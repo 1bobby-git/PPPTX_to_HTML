@@ -15,6 +15,7 @@
   let oneAtATime = false;
   let programmaticScroll = false;
   let scrollTimer = null;
+  let fitFrame = null;
   const visibleRatios = new Map(shells.map(function (shell) { return [shell, 0]; }));
 
   shells.forEach(function (shell, index) {
@@ -51,6 +52,16 @@
       slide.style.transform = 'scale(' + scale + ')';
       slide.style.transformOrigin = 'top left';
     }
+  }
+
+  function scheduleFitSlides() {
+    if (fitFrame !== null) return;
+    // Resizing the children also changes the observed host's height. Write
+    // their dimensions in the next frame, outside ResizeObserver delivery.
+    fitFrame = window.requestAnimationFrame(function () {
+      fitFrame = null;
+      fitSlides();
+    });
   }
 
   function syncSelectionToViewport() {
@@ -163,8 +174,10 @@
     }, { rootMargin: '-10% 0px -25% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] });
     shells.forEach(function (shell) { observer.observe(shell); });
   }
-  if ('ResizeObserver' in window) new ResizeObserver(fitSlides).observe(slidesHost);
-  else window.addEventListener('resize', fitSlides);
+  if ('ResizeObserver' in window) new ResizeObserver(scheduleFitSlides).observe(slidesHost);
+  // In single-slide mode a height-only viewport resize may leave the host's
+  // dimensions unchanged, so the window event is needed even with an observer.
+  window.addEventListener('resize', scheduleFitSlides);
   updateControls();
   fitSlides();
 })();
