@@ -1,0 +1,12 @@
+{
+  "name": "ppptx-to-html-desktop",
+  "productName": "PPPTX to HTML",
+  "version": "1.6.0",
+  "description": "Offline desktop PPTX to HTML converter",
+  "main": "desktop/main.cjs",
+  "type": "commonjs",
+  "private": true,
+  "author": "1bobby-git",
+  "license": "MIT",
+  "repository": "https://github.com/1bobby-git/PPPTX_to_HTML"
+}

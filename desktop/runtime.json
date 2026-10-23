@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "productName": "PPPTX_to_HTML",
+  "electronVersion": "45.0.0",
+  "nodeVersion": "24.22.0",
+  "chromiumVersion": "156.0.8078.48",
+  "release": "https://github.com/electron/electron/releases/tag/v45.0.0",
+  "packagingGuide": "https://www.electronjs.org/docs/latest/tutorial/application-distribution",
+  "platforms": {
+    "win32-x64": {
+      "archive": "electron-v45.0.0-win32-x64.zip",
+      "url": "https://github.com/electron/electron/releases/download/v45.0.0/electron-v45.0.0-win32-x64.zip",
+      "bytes": 158223852,
+      "sha256": "ae53887a23bb640369c93dbd38c408a2af5c0deb86f2fa76c6c244cb444b7f47",
+      "executable": "electron.exe",
+      "packagedExecutable": "PPPTX_to_HTML.exe"
+    },
+    "linux-x64": {
+      "archive": "electron-v45.0.0-linux-x64.zip",
+      "url": "https://github.com/electron/electron/releases/download/v45.0.0/electron-v45.0.0-linux-x64.zip",
+      "bytes": 123909792,
+      "sha256": "22f6a10bd3f7fef987ddbb379d3375ce664ad0c98a9a50f80c89f1718a0c3e3a",
+      "executable": "electron",
+      "packagedExecutable": "PPPTX_to_HTML"
+    }
+  }
+}

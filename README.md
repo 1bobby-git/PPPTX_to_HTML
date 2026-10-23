@@ -1,6 +1,22 @@
 # PPTX → HTML
 
-`.pptx` 프레젠테이션을 독립적인 HTML 파일로 변환합니다. 최신 버전은 **v1.5.1**입니다. **사용자가 웹 화면에서 파일 선택 → 변환 → 미리보기 → HTML 저장까지 진행하고, 웹 서비스가 뒤에서 Native CLI를 실행합니다.** 사용자는 CMD 파일, Node.js 설치, 명령어 입력 없이 운영자가 제공하는 웹 주소에 접속하면 됩니다. PowerPoint와 LibreOffice는 실행하지 않습니다.
+`.pptx` 프레젠테이션을 독립적인 HTML 파일로 변환합니다. 최신 버전은 **v1.6.0**입니다. **Windows 실행 파일에서 파일 선택 → 변환 → 미리보기 → HTML 저장까지 진행할 수 있습니다.** 일반 사용자는 Node.js 설치나 CMD 명령어 입력이 필요 없습니다. PowerPoint와 LibreOffice를 실행하지 않으며, 문서는 이 PC 안에서 변환합니다.
+
+## 사용자: Windows 실행 파일로 변환하기
+
+1. [v1.6.0 다운로드](https://github.com/1bobby-git/PPPTX_to_HTML/releases/tag/v1.6.0)에서 **`PPPTX_to_HTML_Desktop_v1.6.0_win32-x64.zip`**을 받습니다.
+2. ZIP의 **압축을 모두 풀고** `PPPTX_to_HTML.exe`를 더블클릭합니다.
+3. **파일 선택**으로 PPTX를 고릅니다. 필요한 경우 슬라이드 범위·숨김 슬라이드 포함·제목·문서 열기 암호를 설정합니다.
+4. **HTML로 변환**을 누르고 결과를 **미리보기**로 확인합니다.
+5. **HTML 저장**을 눌러 저장 위치를 선택합니다. 결과 HTML은 일반 브라우저에서 열 수 있습니다.
+
+EXE 옆의 DLL·`resources`·`locales` 폴더도 필요합니다. **EXE 한 개만 분리해 복사하지 마세요.** 별도 설치 프로그램이나 자동 업데이트는 없습니다. 실행 파일이 원본 경로를 직접 읽고 내장 작업 스레드에서 기존 공통 변환 엔진을 실행합니다. 별도 `node.exe`나 PowerPoint 프로세스를 실행하지 않습니다. [자세한 실행 파일 안내](docs/DESKTOP.md).
+
+회사 DRM이 이 프로그램에 평문 PPTX 읽기와 HTML 저장을 허용해야 보안 문서를 처리할 수 있습니다. EXE로 포장한 것만으로 NASCA 등의 암호문을 해독하지는 않습니다. **실제 NASCA 문서는 아직 검증되지 않았습니다.** 파일 형식을 읽지 못했다는 오류만으로 확장자 변경이나 DRM이라고 단정하지 않습니다.
+
+## 웹 서비스와 오프라인 HTML
+
+기존 웹 화면과 단일 `index.html`도 유지합니다. 웹 서비스에서는 파일 선택·변환·미리보기·저장을 브라우저로 진행하고 서버가 Native CLI를 실행합니다. 일반 사용자는 운영자가 제공한 웹 주소만 열면 됩니다.
 
 CLI는 웹 서비스를 운영하는 컴퓨터에서 실행됩니다. 기본 설정은 `127.0.0.1`로, 같은 PC에서만 접속합니다. 여러 사람이 설치 없이 웹 주소 하나로 사용하려면 운영자가 사내 서버 등에 서비스를 한 번 배치해야 합니다. 이 경우 파일과 입력한 암호는 **그 변환 서버로 전달**됩니다. 현재 저장소 자체가 실행 중인 변환 서버를 제공하는 것은 아닙니다.
 
@@ -20,6 +36,7 @@ CLI는 웹 서비스를 운영하는 컴퓨터에서 실행됩니다. 기본 설
 
 | 방식 | 일반 사용자 준비 | 변환 위치와 파일 전달 |
 | --- | --- | --- |
+| **Windows 실행 파일** | Desktop ZIP을 모두 풀고 EXE 더블클릭 | EXE가 원본 경로를 직접 읽어 이 PC에서 변환, 서버 업로드 없음 |
 | **웹 화면 + CLI 서비스** | 운영자가 제공한 웹 주소 접속 | 서비스가 실행되는 PC/서버로 파일 전달, 그곳에서 CLI 실행 |
 | 기존 단일 `index.html` | HTML 한 파일 저장 후 열기 | 브라우저 안에서 변환, 서버 업로드 없음 |
 | 직접 Native CLI | Node.js와 CLI 환경 준비 | 실행한 컴퓨터 안에서 변환 |
@@ -30,13 +47,13 @@ CLI는 웹 서비스를 운영하는 컴퓨터에서 실행됩니다. 기본 설
 
 [`g21589/PPTX2HTML`](https://github.com/g21589/PPTX2HTML), [`javier-mora/pptx-to-html`](https://github.com/javier-mora/pptx-to-html), [Aspose 예제](https://gist.github.com/aspose-com-gists/223609d1fb2c102aac36f1c4707834bb), [`pptx-export` topic](https://github.com/topics/pptx-export)의 실제 소스·라이선스·변환 방향을 비교했습니다. 검토한 버전과 채택·제외 근거는 [참고자료 분석](docs/REFERENCE_REVIEW.md)에 기록했습니다.
 
-- **하나의 변환 코어:** 브라우저와 Native CLI가 범위 선택, 숨긴 슬라이드 포함, 엔진 결과 검증과 진단 처리를 공유합니다.
+- **하나의 변환 코어:** Windows 앱·브라우저·Native CLI가 범위 선택, 숨긴 슬라이드 포함, 엔진 결과 검증과 진단 처리를 공유합니다.
 - **슬라이드 누락 방지:** 일부 차트 대체 표시 때문에 HTML 컨테이너 밖으로 밀려난 슬라이드를 복구하고, 엔진이 보고한 장수와 최종 HTML 장수를 대조합니다.
 - **미지원 차트의 데이터 보존:** 정확한 슬라이드와 위치를 확인할 수 있는 차트에 한해 문서 내부 캐시의 원시 값을 표로 제공합니다. 정상적으로 그려지는 SVG 차트는 그대로 유지합니다. 캐시 표는 원본 차트의 모양이나 최신 외부 데이터의 재현을 의미하지 않습니다.
 - **정상 차트의 오인식 수정:** 기존 엔진의 XML 깊이 계산을 수정해, DrawingML 스타일이 들어 있는 지원 차트를 잘못된 축으로 거부하던 문제를 해결했습니다. 정상 2축 막대 차트에서 값·범주·계열을 직접 SVG로 표시합니다. 축이 실제로 잘못된 차트와 미지원 구성은 기존 대체 표시를 유지합니다.
 - **여러 테마의 색·글꼴 보정:** 관계와 상속이 명확한 경우 각 슬라이드의 테마를 적용하고 원래 글자 크기를 유지합니다. 선택적인 목록 스타일 요소가 생략된 정상 문서도 처리합니다. 모호한 override나 상속은 추정해서 바꾸지 않고 경고합니다.
 - **슬라이드 내부 링크 보존:** 텍스트·도형·이미지에 설정된 페이지 이동과 다음·이전·처음·마지막 이동을 저장한 HTML에서도 사용할 수 있습니다. 숨김·범위 선택 이후의 결과 페이지에 맞춰 연결하고, 제외된 고정 목적지는 비활성화합니다. 키보드 Enter·Space 조작도 지원합니다.
-- **환경별 자동 검증:** GitHub Actions에서 Windows·macOS·Linux의 Node CLI와 웹 흐름, 추가 Firefox·WebKit의 오프라인 흐름을 검사하도록 구성했습니다. 설정된 검사와 실제 통과한 환경은 구분합니다.
+- **환경별 자동 검증:** GitHub Actions에서 실제 Windows 배포 EXE, Windows·macOS·Linux의 Node CLI와 웹 흐름, 추가 Firefox·WebKit의 오프라인 흐름을 검사합니다. 배포 EXE는 저장소 밖으로 복사한 뒤 실행하여 개발 환경의 의존성에 기대지 않는지 확인합니다. 모든 검사가 통과한 새 버전은 GitHub Release에 배포합니다.
 
 두 번째 JS 렌더러나 Aspose SDK를 중복 설치하지 않습니다. Aspose 평가판의 워터마크·텍스트 읽기 제한, HTML5의 외부 리소스 의존, topic 프로젝트의 반대 변환 방향 등을 검토한 결정입니다. 모든 PowerPoint 기능과 모든 환경의 시각적 일치를 보장하는 기능을 제공한다고 표시하지 않습니다.
 
@@ -50,7 +67,7 @@ npm.cmd ci --omit=dev --ignore-scripts --no-audit --no-fund
 .\tools\Convert-PptxNative.cmd "C:\test.pptx" -o "C:\test.html"
 ```
 
-의존성이 포함된 `PPPTX_to_HTML_Native_v1.5.1.zip`을 받았다면 `npm.cmd ci`는 생략합니다. 압축을 푼 폴더에서 바로 실행하세요. CMD를 사용하지 않고 다음처럼 실행해도 같습니다.
+의존성이 포함된 `PPPTX_to_HTML_Native_v1.6.0.zip`을 받았다면 `npm.cmd ci`는 생략합니다. 압축을 푼 폴더에서 바로 실행하세요. CMD를 사용하지 않고 다음처럼 실행해도 같습니다.
 
 ```powershell
 node .\tools\convert-pptx.cjs "C:\test.pptx" -o "C:\test.html"
@@ -82,7 +99,7 @@ node .\tools\convert-pptx.cjs "C:\test.pptx" -o "C:\test.html"
 2. **문서 열기 암호**에 PowerPoint에서 입력하는 암호를 넣습니다.
 3. **HTML로 변환**을 누릅니다. 암호를 입력하지 않고 시작한 경우에는 입력란을 자동으로 보여 줍니다.
 
-단일 `index.html`에서는 암호 확인과 복호화가 브라우저의 작업 스레드 안에서 실행되어 암호를 서버로 보내지 않습니다. **웹 서비스에서는 파일과 암호를 접속한 변환 서버로 전달**하며, 서버가 암호를 CLI의 표준 입력으로 넘깁니다. 두 경로 모두 변환 요청 후 암호 입력란을 비우고, 브라우저 저장소·결과 HTML·진단 정보에 암호를 보관하지 않습니다. 원본 파일은 바뀌지 않습니다.
+단일 `index.html`에서는 암호 확인과 복호화가 브라우저의 작업 스레드 안에서 실행되어 암호를 서버로 보내지 않습니다. Windows 앱은 내장 작업 스레드에서 처리합니다. **웹 서비스에서는 파일과 암호를 접속한 변환 서버로 전달**하며, 서버가 암호를 CLI의 표준 입력으로 넘깁니다. 변환 후 암호 입력란을 비우고, 브라우저 저장소·결과 HTML·진단 정보에 암호를 보관하지 않습니다. 원본 파일은 바뀌지 않습니다.
 
 지원 범위는 Office Agile AES-CBC(128/192/256비트, SHA-1/256/384/512, 일반적인 16바이트 솔트)와 Standard AES-128/SHA-1입니다. Agile의 데이터 무결성 정보가 있으면 HMAC을 검증합니다. 인증서만 사용하는 문서, 다른 암호화 방식, 암호 반복 횟수 1,000,000회 초과는 지원하지 않습니다. 회사 DRM의 로그인이나 사용 권한은 이 문서 암호와 다릅니다.
 
@@ -98,11 +115,11 @@ NASCA는 사용자 인증과 문서 권한 확인을 거쳐 복호화하는 문�
 | 지원되는 Office 문서 열기 암호가 있는 PPTX | 사용자가 입력한 암호로 브라우저 안에서 복호화 후 변환 |
 | 회사 DRM 암호문 또는 지원되지 않는 보호 형식 | 오류 코드와 형식 진단을 표시하고 중지 |
 
-새 Native CLI는 브라우저와 같은 JavaScript/WASM 변환 엔진을 Node.js에서 실행합니다. 파일을 읽는 프로그램에 평문 PPTX가 제공되는 경우에만 내용을 변환할 수 있습니다. 회사 보안 프로그램이 Node.js에도 그 읽기를 허용하는지는 이 도구가 결정하지 않습니다. 현재 버전에는 NASCA 전용 복호화가 구현되어 있지 않으며, 실제 NASCA 문서 성공 여부는 검증되지 않았습니다. 웹 서비스는 이 CLI를 실행하므로 같은 제한이 적용되며, 기존 LibreOffice CLI도 회사 DRM을 대신 인증하지 않습니다.
+새 Native CLI와 Windows 앱은 브라우저와 같은 JavaScript/WASM 변환 엔진을 사용합니다. 파일을 읽는 프로그램에 평문 PPTX가 제공되는 경우에만 내용을 변환할 수 있습니다. 회사 보안 프로그램이 `node.exe` 또는 `PPPTX_to_HTML.exe`에 그 읽기와 결과 저장을 허용하는지는 이 도구가 결정하지 않습니다. 현재 버전에는 NASCA 전용 복호화가 구현되어 있지 않으며, 실제 NASCA 문서 성공 여부는 검증되지 않았습니다. 웹 서비스는 이 CLI를 실행하므로 같은 제한이 적용되며, 기존 LibreOffice CLI도 회사 DRM을 대신 인증하지 않습니다.
 
 ### 이전 PowerPoint 도우미와의 차이
 
-v1.1.0 도우미는 PowerPoint의 슬라이드 PNG 내보내기 결과를 HTML에 넣는 이미지 기반 방식이었습니다. PowerPoint 자체의 외부 통신이나 회사 보안 제품의 제어까지 이 도우미가 제한하지는 못했습니다. 현재 `index.html`과 두 CLI는 해당 도우미를 호출하지 않습니다. PowerPoint·LibreOffice를 모두 사용하지 않으려면 **`Convert-PptxNative.cmd` 또는 `convert-pptx.cjs`**를 사용하세요.
+v1.1.0 도우미는 PowerPoint의 슬라이드 PNG 내보내기 결과를 HTML에 넣는 이미지 기반 방식이었습니다. PowerPoint 자체의 외부 통신이나 회사 보안 제품의 제어까지 이 도우미가 제한하지는 못했습니다. 현재 Windows 앱·`index.html`·두 CLI는 해당 도우미를 호출하지 않습니다. PowerPoint·LibreOffice를 모두 사용하지 않으려면 **Windows 앱 또는 Native CLI**를 사용하세요.
 
 저장소 `tools/Convert-PptxWithPowerPoint.*`는 이전 버전 참고 소스입니다. 새 CLI의 구성 요소가 아니며, 이전 도우미의 PNG 내보내기 오류를 고쳤거나 실제 NASCA+SD 문서 변환에 성공했다고 주장하지 않습니다.
 
@@ -123,7 +140,7 @@ v1.1.0 도우미는 PowerPoint의 슬라이드 PNG 내보내기 결과를 HTML�
 
 ## 개발 및 검증
 
-Native CLI 실행 및 저장소 개발에는 Node.js가 필요합니다. 배포된 단일 `index.html`만 사용하는 경우에는 설치할 필요가 없습니다.
+Native CLI 직접 실행 및 저장소 개발에는 Node.js가 필요합니다. 배포된 Windows 앱이나 단일 `index.html`을 사용하는 경우에는 설치할 필요가 없습니다.
 
 ```bash
 npm ci
@@ -138,6 +155,7 @@ npm test
 npm run test:native
 npm run test:web
 npm run package:native
+npm run package:desktop
 ```
 
 `npm run build`는 의존성이 설치된 뒤 인터넷 연결 없이 실행할 수 있습니다. Playwright가 사용할 Chromium을 이미 설치했다면 `CHROME_BIN` 환경 변수에 실행 파일 경로를 지정할 수 있습니다. `npm test`는 먼저 테스트용 PPTX를 생성합니다. `npm run test:fixtures`로 테스트 파일만 다시 만들 수도 있습니다. Linux에서 한글 스크린샷을 검증하려면 로컬 한글 글꼴도 필요합니다.
@@ -159,7 +177,7 @@ Chrome for Testing의 실제 `file://` 환경에서 HTTP/HTTPS 요청을 모두 
 - PowerPoint 도우미의 UI·내장 파일·다운로드 동작이 없는 브라우저 전용 배포 확인
 - 일반 PPTX의 로컬 변환과 보호된 입력의 오류 안내에서 HTTP/HTTPS 요청이 없는지 확인
 
-테스트는 생성한 PPTX를 기준으로 합니다. 모든 PowerPoint 기능이나 실제 사용자 문서의 시각적 일치를 보장하지 않습니다. [환경별 자동 검사](.github/workflows/compatibility.yml)는 세 OS의 Node 24·Chromium과 Linux의 Firefox·WebKit을 대상으로 합니다. Playwright WebKit 검사는 실제 Safari·iOS 기기 검사를 대체하지 않습니다. 각 커밋의 실제 통과 여부는 [Actions](https://github.com/1bobby-git/PPPTX_to_HTML/actions)에서 확인합니다.
+테스트는 생성한 PPTX를 기준으로 합니다. 모든 PowerPoint 기능이나 실제 사용자 문서의 시각적 일치를 보장하지 않습니다. [환경별 자동 검사](.github/workflows/compatibility.yml)는 Windows 배포 EXE, 세 OS의 Node 24·Chromium, Linux의 Firefox·WebKit을 대상으로 합니다. Playwright WebKit 검사는 실제 Safari·iOS 기기 검사를 대체하지 않습니다. 각 커밋의 실제 통과 여부는 [Actions](https://github.com/1bobby-git/PPPTX_to_HTML/actions)에서 확인합니다.
 
 다른 브라우저 엔진을 로컬에서 검사하려면 해당 Playwright 브라우저를 설치한 뒤 `PPTX_TEST_BROWSER=firefox node tests/offline.cjs` 또는 `PPTX_TEST_BROWSER=webkit node tests/offline.cjs`를 실행합니다. Windows PowerShell에서는 `$env:PPTX_TEST_BROWSER="firefox"`처럼 환경 변수를 먼저 지정합니다.
 
@@ -167,6 +185,8 @@ Chrome for Testing의 실제 `file://` 환경에서 HTTP/HTTPS 요청을 모두 
 
 | 경로 | 역할 |
 | --- | --- |
+| `desktop/`, `docs/DESKTOP.md` | 로컬 파일 선택·변환·미리보기·저장 화면, 제한된 IPC, 원본 직접 읽기와 Windows 사용 안내 |
+| `scripts/package-desktop.cjs`, `tests/desktop.cjs` | 고정 Electron 런타임과 공통 엔진을 포함한 포터블 배포 생성 및 실제 배포 앱 검증 |
 | `tools/serve-web.cjs`, `docs/WEB_SERVICE.md` | 웹 화면·API를 제공하고 Native CLI를 실행하는 서비스와 운영 안내 |
 | `src/web-shell.html`, `src/server-client.js`, `tests/web-service.cjs` | 웹 서비스 화면, 요청·취소 처리, 실제 CLI/API/브라우저 검증 |
 | `index.html` | 배포용 단일 HTML 파일. 다운로드 후 바로 실행합니다. |
@@ -204,6 +224,8 @@ HTML 정제에는 [`DOMPurify` 3.4.17](https://github.com/cure53/DOMPurify)(Apac
 Office 암호 처리에는 [`officecrypto-tool` 0.0.19](https://github.com/zurmokeeper/officecrypto-tool)의 암호화 모듈, `cfb` 1.2.2, `xml2js` 0.6.2 및 Browserify 브라우저 구현을 포함합니다. 실제 번들에 포함된 패키지의 고지는 `licenses/OfficeCrypto-BUNDLED-LICENSES.txt`와 HTML 안에 함께 들어갑니다. 독립 기준 파일의 생성 정보와 해시는 `tests/reference/manifest.json`에 있습니다.
 
 Native CLI는 같은 변환·입력·정화 코드를 재사용하며 DOM 처리에 [`jsdom` 30.1.3](https://github.com/jsdom/jsdom)(MIT)을 사용합니다. 의존성을 포함한 Native ZIP에는 해당 패키지의 라이선스 파일도 보존합니다. 브라우저나 Office 프로세스를 실행하지 않고 Node.js의 작업 스레드 안에서 처리합니다.
+
+Windows 앱은 [Electron](https://www.electronjs.org/) 45.0.0의 공식 런타임을 포함합니다. 내장 Node.js의 작업 스레드에서 동일한 변환 엔진을 실행하며 UI와 문서 미리보기는 격리합니다. Electron의 `LICENSE`·`LICENSES.chromium.html`과 포함된 패키지의 라이선스를 배포 폴더에 보존합니다. 공식 런타임 URL·크기·SHA256은 `desktop/runtime.json`에 고정합니다.
 
 사용자가 제시한 [`g21589/PPTX2HTML`](https://github.com/g21589/PPTX2HTML)의 ZIP/XML → HTML·SVG 변환 구조를 참고했습니다. 해당 프로젝트는 브라우저용 JavaScript 구현입니다. 이 저장소의 실제 변환은 위에 명시한 `pptx2html-turbo` 엔진을 재사용합니다.
 

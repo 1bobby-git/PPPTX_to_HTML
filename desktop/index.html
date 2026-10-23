@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'none'; connect-src 'none'; frame-src pptx-app://preview; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>PPTX → HTML</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="renderer.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>PPTX → HTML</span></div>
+      <span class="local-badge"><span aria-hidden="true"></span>오프라인 · 내 컴퓨터에서 변환</span>
+    </header>
+    <main id="workspace" aria-busy="false" aria-labelledby="page-title">
+      <div class="intro">
+        <h1 id="page-title">발표 자료를 HTML로 저장하세요.</h1>
+        <p>파일을 선택하면 이 컴퓨터에서 변환합니다. 결과는 브라우저에서 열 수 있는 하나의 HTML 파일로 저장됩니다.</p>
+      </div>
+      <div class="workspace-grid">
+        <section class="card input-card" aria-labelledby="input-heading">
+          <div class="section-heading"><span class="step" aria-hidden="true">01</span><div><h2 id="input-heading">파일 선택</h2><p>PPTX 파일 · 최대 64 MiB</p></div></div>
+          <div class="file-picker">
+            <svg class="file-icon" aria-hidden="true" width="40" height="46" viewBox="0 0 40 46" fill="none"><path d="M8 2h16l10 10v29a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3Z" stroke="currentColor" stroke-width="2"/><path d="M23 2v11h11M12 23h15M12 29h15M12 35h9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <p id="file-prompt">변환할 발표 자료를 선택해 주세요.</p>
+            <button id="select-file" type="button" class="button secondary" disabled>PPTX 파일 선택</button>
+          </div>
+          <div id="file-detail" class="file-detail" hidden><span class="file-glyph" aria-hidden="true">P</span><div><strong id="file-name"></strong><span id="file-size"></span></div></div>
+          <div class="section-heading settings-heading"><span class="step" aria-hidden="true">02</span><div><h2>변환 설정</h2><p>기본 설정으로 바로 변환할 수 있습니다.</p></div></div>
+          <div class="field"><label for="title">HTML 제목 <span class="optional">선택</span></label><input id="title" type="text" maxlength="300" autocomplete="off" placeholder="비워두면 파일 이름을 사용합니다" disabled></div>
+          <div class="field"><label for="slides">슬라이드 범위 <span class="optional">선택</span></label><input id="slides" type="text" maxlength="2048" autocomplete="off" placeholder="전체 슬라이드 · 예: 1,3-5" aria-describedby="slides-help" disabled><p id="slides-help" class="field-help">번호는 쉼표로, 연속된 범위는 하이픈으로 구분합니다.</p></div>
+          <label class="checkbox-label" for="include-hidden"><input id="include-hidden" type="checkbox" disabled><span>숨겨진 슬라이드도 포함</span></label>
+          <details id="password-options" class="password-options"><summary>문서에 열기 암호가 있나요?</summary><div class="field"><label for="password">문서 열기 암호</label><input id="password" type="password" maxlength="255" autocomplete="off" spellcheck="false" aria-describedby="password-help" disabled><p id="password-help" class="field-help">이번 변환에만 사용하며, 변환 후 입력란을 비웁니다. 회사 DRM 보안과는 별개입니다.</p></div></details>
+          <div class="convert-actions"><button id="convert" type="button" class="button primary" disabled>HTML로 변환 <span aria-hidden="true">→</span></button><button id="cancel" type="button" class="button quiet" hidden>취소</button></div>
+          <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true" tabindex="-1" data-kind="ready"><span class="status-indicator" aria-hidden="true"></span><span id="status-message">변환기를 준비하고 있습니다…</span></div>
+          <p id="error-code" class="error-code" hidden></p>
+        </section>
+        <section id="result" class="card result-card" aria-labelledby="result-heading" aria-busy="false">
+          <div class="result-header"><div class="section-heading"><span class="step" aria-hidden="true">03</span><div><h2 id="result-heading" tabindex="-1">변환 결과</h2><p id="result-summary">변환이 끝나면 미리 보고 저장할 수 있습니다.</p></div></div><span id="ready-badge" class="ready-badge" hidden>완료</span></div>
+          <div class="preview-area">
+            <div id="preview-empty" class="preview-empty"><div class="browser-sketch" aria-hidden="true"><div class="sketch-bar"><i></i><i></i><i></i></div><div class="sketch-body"><span></span><span></span><span></span><b></b></div></div><strong id="preview-title">HTML 미리보기</strong><p id="preview-description">파일을 선택하고 변환을 시작해 주세요.</p></div>
+            <iframe id="preview-frame" class="preview-frame" title="변환된 HTML 미리보기" sandbox="allow-scripts" hidden></iframe>
+          </div>
+          <div class="result-actions"><button id="preview" type="button" class="button secondary" disabled>미리보기 열기</button><button id="save-html" type="button" class="button primary" disabled><svg aria-hidden="true" width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 2v10m-4-4 4 4 4-4M3 12v5h14v-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>HTML 저장</button></div>
+          <p id="save-status" class="save-status" role="status" aria-live="polite" hidden></p>
+          <details id="warnings" class="warnings" hidden><summary id="warning-summary">변환 알림</summary><ul id="warning-list"></ul></details>
+        </section>
+      </div>
+      <aside class="usage-note" aria-label="사용 안내"><p>파일을 외부 서버로 전송하지 않습니다.</p><p>회사 보안 문서는 읽기·저장 권한에 따라 변환이 제한될 수 있습니다. 일부 서식과 애니메이션은 원본과 다를 수 있습니다.</p></aside>
+    </main>
+    <footer class="app-footer"><span id="app-version">PPTX → HTML</span><span>PowerPoint 실행 없이 사용</span></footer>
+  </div>
+</body>
+</html>

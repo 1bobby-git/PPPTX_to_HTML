@@ -40,6 +40,16 @@ jobs:
       - run: npm run test:native
       - run: npm run test:web
       - run: npm run package:native
+      - name: Keep offline HTML and native package
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: offline-and-native
+          path: |
+            index.html
+            dist/PPPTX_to_HTML_Native_*.zip
+          if-no-files-found: error
+          compression-level: 0
 
   browser-engines:
     name: Offline browser / ${{ matrix.browser }}
@@ -77,3 +87,167 @@ jobs:
       - run: npm run test:links
         env:
           PPTX_TEST_BROWSER: ${{ matrix.browser }}
+
+  desktop-windows:
+    name: Desktop EXE / Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run test:fixtures
+      - run: node scripts/create-protected-fixtures.cjs
+      - run: npm run package:desktop
+      - name: Run the packaged application outside the repository
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $env:PPTX_DESKTOP_EXECUTABLE = Join-Path $PWD "dist/PPPTX_to_HTML_Desktop_v${version}_win32-x64/PPPTX_to_HTML.exe"
+          $env:PPTX_DESKTOP_SCREENSHOT = Join-Path $env:RUNNER_TEMP 'pptx-desktop.png'
+          npm run test:desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Keep the tested Windows package
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: desktop-windows-x64
+          path: dist/PPPTX_to_HTML_Desktop_*_win32-x64.zip
+          if-no-files-found: error
+          compression-level: 0
+      - name: Keep the desktop preview
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: desktop-preview
+          path: ${{ runner.temp }}/pptx-desktop.png
+          if-no-files-found: error
+
+  release:
+    name: Publish tested release
+    needs: [native-and-web, browser-engines, desktop-windows]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: desktop-windows-x64
+          path: release-assets
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: offline-and-native
+          path: release-native
+      - name: Publish each version once after all compatibility checks pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import shutil
+          import subprocess
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import quote
+          from urllib.request import Request, urlopen
+
+          version = json.loads(Path('package.json').read_text(encoding='utf-8'))['version']
+          if not isinstance(version, str) or not re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?', version):
+              raise SystemExit('Refusing to publish an invalid package version.')
+          tag = 'v' + version
+          commit = os.environ['GITHUB_SHA']
+          if not re.fullmatch(r'[0-9a-f]{40}', commit):
+              raise SystemExit('GITHUB_SHA must be the full tested commit SHA.')
+          base = os.environ['GITHUB_API_URL'].rstrip('/') + '/repos/' + os.environ['GH_REPO']
+          missing = object()
+
+          def api(method, endpoint, data=None, allow_missing=False):
+              request = Request(base + endpoint, method=method,
+                  data=None if data is None else json.dumps(data).encode('utf-8'),
+                  headers={'Accept': 'application/vnd.github+json',
+                      'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                      'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2026-03-10'})
+              try:
+                  with urlopen(request, timeout=30) as response:
+                      return json.load(response)
+              except HTTPError as error:
+                  if allow_missing and error.code == 404:
+                      return missing
+                  raise SystemExit(f'GitHub API {method} {endpoint} failed with HTTP {error.code}; refusing to publish.')
+              except (URLError, TimeoutError):
+                  raise SystemExit(f'GitHub API {method} {endpoint} could not be reached; refusing to publish.')
+              except (ValueError, UnicodeError):
+                  raise SystemExit(f'GitHub API {method} {endpoint} returned invalid JSON; refusing to publish.')
+
+          def existing_release(release):
+              if not isinstance(release, dict) or release.get('tag_name') != tag or not isinstance(release.get('draft'), bool):
+                  raise SystemExit('GitHub returned unexpected release metadata; refusing to publish.')
+              if release['draft']:
+                  raise SystemExit(f'Draft release {tag} already exists. It is not published; review the interrupted release before retrying.')
+              print(f'Release {tag} is already published; its tag and assets remain unchanged.')
+              raise SystemExit(0)
+
+          release = api('GET', '/releases/tags/' + quote(tag, safe=''), allow_missing=True)
+          if release is not missing:
+              existing_release(release)
+          # The tag endpoint only finds published releases. Authenticated listings
+          # also include drafts, including drafts left by interrupted uploads.
+          page = 1
+          while True:
+              releases = api('GET', f'/releases?per_page=100&page={page}')
+              if not isinstance(releases, list) or any(not isinstance(item, dict) for item in releases):
+                  raise SystemExit('GitHub returned an invalid release list; refusing to publish.')
+              for item in releases:
+                  if item.get('tag_name') == tag:
+                      existing_release(item)
+              if len(releases) < 100:
+                  break
+              page += 1
+
+          destination = Path('release-assets')
+          desktop = destination / f'PPPTX_to_HTML_Desktop_v{version}_win32-x64.zip'
+          native = Path('release-native/dist') / f'PPPTX_to_HTML_Native_v{version}.zip'
+          offline = Path('release-native/index.html')
+          notes = Path('docs/releases') / f'v{version}.md'
+          for file in [desktop, native, offline, notes]:
+              if not file.is_file() or file.stat().st_size == 0:
+                  raise SystemExit(f'Required release file is missing or empty: {file}')
+          if not notes.read_text(encoding='utf-8').strip():
+              raise SystemExit('Release notes are empty; refusing to create a tag.')
+          shutil.copyfile(native, destination / native.name)
+          shutil.copyfile(offline, destination / offline.name)
+          assets = [desktop, destination / native.name, destination / offline.name]
+          checksums = destination / 'SHA256SUMS.txt'
+          lines = []
+          for file in assets:
+              digest = hashlib.sha256()
+              with file.open('rb') as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                      digest.update(chunk)
+              lines.append(f'{digest.hexdigest()}  {file.name}\n')
+          checksums.write_text(''.join(lines), encoding='utf-8')
+
+          reference = 'refs/tags/' + tag
+          tag_info = api('GET', '/git/ref/tags/' + quote(tag, safe=''), allow_missing=True)
+          if tag_info is missing:
+              # Creation cannot silently move an existing tag. Any API error,
+              # including a concurrent creation conflict, stops this run.
+              tag_info = api('POST', '/git/refs', {'ref': reference, 'sha': commit})
+          target = tag_info.get('object') if isinstance(tag_info, dict) else None
+          if not isinstance(target, dict) or tag_info.get('ref') != reference or target.get('type') != 'commit' or target.get('sha') != commit:
+              raise SystemExit(f'Tag {tag} must point directly to tested commit {commit}; annotated or different tags are refused.')
+          print(f'Verified {tag} at tested commit {commit}.', flush=True)
+          subprocess.run(['gh', 'release', 'create', tag, *map(str, assets), str(checksums),
+              '--verify-tag', '--target', commit, '--title', f'v{version} · Offline PPTX to HTML',
+              '--notes-file', str(notes)], check=True)
+          PY
