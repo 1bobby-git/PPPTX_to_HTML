@@ -1,6 +1,6 @@
 # PPTX → HTML
 
-`.pptx` 프레젠테이션을 독립적인 HTML 파일로 변환합니다. **v1.5.0에서는 사용자가 웹 화면에서 파일 선택 → 변환 → 미리보기 → HTML 저장까지 진행하고, 웹 서비스가 뒤에서 Native CLI를 실행합니다.** 사용자는 CMD 파일, Node.js 설치, 명령어 입력 없이 운영자가 제공하는 웹 주소에 접속하면 됩니다. PowerPoint와 LibreOffice는 실행하지 않습니다.
+`.pptx` 프레젠테이션을 독립적인 HTML 파일로 변환합니다. 최신 버전은 **v1.5.1**입니다. **사용자가 웹 화면에서 파일 선택 → 변환 → 미리보기 → HTML 저장까지 진행하고, 웹 서비스가 뒤에서 Native CLI를 실행합니다.** 사용자는 CMD 파일, Node.js 설치, 명령어 입력 없이 운영자가 제공하는 웹 주소에 접속하면 됩니다. PowerPoint와 LibreOffice는 실행하지 않습니다.
 
 CLI는 웹 서비스를 운영하는 컴퓨터에서 실행됩니다. 기본 설정은 `127.0.0.1`로, 같은 PC에서만 접속합니다. 여러 사람이 설치 없이 웹 주소 하나로 사용하려면 운영자가 사내 서버 등에 서비스를 한 번 배치해야 합니다. 이 경우 파일과 입력한 암호는 **그 변환 서버로 전달**됩니다. 현재 저장소 자체가 실행 중인 변환 서버를 제공하는 것은 아닙니다.
 
@@ -24,7 +24,7 @@ CLI는 웹 서비스를 운영하는 컴퓨터에서 실행됩니다. 기본 설
 | 기존 단일 `index.html` | HTML 한 파일 저장 후 열기 | 브라우저 안에서 변환, 서버 업로드 없음 |
 | 직접 Native CLI | Node.js와 CLI 환경 준비 | 실행한 컴퓨터 안에서 변환 |
 
-기존 **약 4.1 MiB의 단일 `index.html`**도 유지합니다. 이 오프라인 경로에는 Node.js, npm, 별도 서버, CDN, 인터넷 연결, PowerPoint 설치가 필요하지 않습니다. 회사 DRM을 해독하는 기능이 새로 추가된 것은 아니며, 자세한 범위는 아래 보안 문서 안내를 참고하세요.
+기존 **약 4.5 MiB의 단일 `index.html`**도 유지합니다. 이 오프라인 경로에는 Node.js, npm, 별도 서버, CDN, 인터넷 연결, PowerPoint 설치가 필요하지 않습니다. 회사 DRM을 해독하는 기능이 새로 추가된 것은 아니며, 자세한 범위는 아래 보안 문서 안내를 참고하세요.
 
 ## 참고 프로젝트를 검토해 반영한 개선
 
@@ -33,7 +33,9 @@ CLI는 웹 서비스를 운영하는 컴퓨터에서 실행됩니다. 기본 설
 - **하나의 변환 코어:** 브라우저와 Native CLI가 범위 선택, 숨긴 슬라이드 포함, 엔진 결과 검증과 진단 처리를 공유합니다.
 - **슬라이드 누락 방지:** 일부 차트 대체 표시 때문에 HTML 컨테이너 밖으로 밀려난 슬라이드를 복구하고, 엔진이 보고한 장수와 최종 HTML 장수를 대조합니다.
 - **미지원 차트의 데이터 보존:** 정확한 슬라이드와 위치를 확인할 수 있는 차트에 한해 문서 내부 캐시의 원시 값을 표로 제공합니다. 정상적으로 그려지는 SVG 차트는 그대로 유지합니다. 캐시 표는 원본 차트의 모양이나 최신 외부 데이터의 재현을 의미하지 않습니다.
-- **여러 테마의 색·글꼴 보정:** 관계와 상속이 명확한 경우 각 슬라이드의 테마를 적용하고 원래 글자 크기를 유지합니다. 모호한 override나 상속은 추정해서 바꾸지 않고 경고합니다.
+- **정상 차트의 오인식 수정:** 기존 엔진의 XML 깊이 계산을 수정해, DrawingML 스타일이 들어 있는 지원 차트를 잘못된 축으로 거부하던 문제를 해결했습니다. 정상 2축 막대 차트에서 값·범주·계열을 직접 SVG로 표시합니다. 축이 실제로 잘못된 차트와 미지원 구성은 기존 대체 표시를 유지합니다.
+- **여러 테마의 색·글꼴 보정:** 관계와 상속이 명확한 경우 각 슬라이드의 테마를 적용하고 원래 글자 크기를 유지합니다. 선택적인 목록 스타일 요소가 생략된 정상 문서도 처리합니다. 모호한 override나 상속은 추정해서 바꾸지 않고 경고합니다.
+- **슬라이드 내부 링크 보존:** 텍스트·도형·이미지에 설정된 페이지 이동과 다음·이전·처음·마지막 이동을 저장한 HTML에서도 사용할 수 있습니다. 숨김·범위 선택 이후의 결과 페이지에 맞춰 연결하고, 제외된 고정 목적지는 비활성화합니다. 키보드 Enter·Space 조작도 지원합니다.
 - **환경별 자동 검증:** GitHub Actions에서 Windows·macOS·Linux의 Node CLI와 웹 흐름, 추가 Firefox·WebKit의 오프라인 흐름을 검사하도록 구성했습니다. 설정된 검사와 실제 통과한 환경은 구분합니다.
 
 두 번째 JS 렌더러나 Aspose SDK를 중복 설치하지 않습니다. Aspose 평가판의 워터마크·텍스트 읽기 제한, HTML5의 외부 리소스 의존, topic 프로젝트의 반대 변환 방향 등을 검토한 결정입니다. 모든 PowerPoint 기능과 모든 환경의 시각적 일치를 보장하는 기능을 제공한다고 표시하지 않습니다.
@@ -48,7 +50,7 @@ npm.cmd ci --omit=dev --ignore-scripts --no-audit --no-fund
 .\tools\Convert-PptxNative.cmd "C:\test.pptx" -o "C:\test.html"
 ```
 
-의존성이 포함된 `PPPTX_to_HTML_Native_v1.5.0.zip`을 받았다면 `npm.cmd ci`는 생략합니다. 압축을 푼 폴더에서 바로 실행하세요. CMD를 사용하지 않고 다음처럼 실행해도 같습니다.
+의존성이 포함된 `PPPTX_to_HTML_Native_v1.5.1.zip`을 받았다면 `npm.cmd ci`는 생략합니다. 압축을 푼 폴더에서 바로 실행하세요. CMD를 사용하지 않고 다음처럼 실행해도 같습니다.
 
 ```powershell
 node .\tools\convert-pptx.cjs "C:\test.pptx" -o "C:\test.html"
@@ -107,7 +109,7 @@ v1.1.0 도우미는 PowerPoint의 슬라이드 PNG 내보내기 결과를 HTML�
 ## Native CLI와 브라우저 변환 범위
 
 - 원본의 애니메이션과 슬라이드 전환은 정적 화면으로 표현됩니다.
-- 차트는 종류와 축·캐시 구성에 따라 지원 범위가 다르며, 기본형 차트도 대체 표시로 나올 수 있습니다. 미지원 차트는 대응 위치가 확실할 때 저장된 데이터를 표로 보완합니다. 외부 workbook은 열지 않으며, 숫자 서식은 적용하지 않습니다. 캐시가 없거나 한도를 넘거나 매핑이 모호한 경우에는 해당 안내 또는 기존 대체 표시를 유지합니다.
+- 차트는 종류와 축·캐시 구성에 따라 지원 범위가 다르며, 기본형 차트도 대체 표시로 나올 수 있습니다. SVG로 그려진 차트도 개별 계열의 채우기·선·전체 제목을 모두 재현하지 않으며 테마 팔레트를 사용할 수 있습니다. 미지원 차트는 대응 위치가 확실할 때 저장된 데이터를 표로 보완합니다. 외부 workbook은 열지 않으며, 캐시 표에는 숫자 서식을 적용하지 않습니다. 캐시가 없거나 한도를 넘거나 매핑이 모호한 경우에는 해당 안내 또는 기존 대체 표시를 유지합니다.
 - SmartArt, OLE 개체, 수식은 대체 표현이 사용되거나 원본과 차이가 날 수 있습니다.
 - 글꼴이 보는 기기에 설치되어 있는지에 따라 줄바꿈과 배치가 달라질 수 있습니다.
 - 브라우저 변환은 구형 `.ppt`를 지원하지 않습니다. 인식한 구형 형식은 별도로 안내하며, 문서 열기 암호는 위 지원 범위에서 처리합니다.
@@ -129,7 +131,9 @@ npm run build
 npx playwright install chromium
 npm run test:core
 npm run test:charts
+npm run test:engine
 npm run test:fidelity
+npm run test:links
 npm test
 npm run test:native
 npm run test:web
@@ -176,12 +180,14 @@ Chrome for Testing의 실제 `file://` 환경에서 HTTP/HTTPS 요청을 모두 
 | `src/worker.js` | 브라우저 내 PPTX 변환 작업 |
 | `src/conversion-core.js`, `tests/conversion-core.cjs` | 브라우저·Node 공통 변환 계약과 장수·범위·정화 회귀 검사 |
 | `src/chart-data.js`, `tests/chart-data.cjs` | 미지원 차트의 내부 캐시 데이터와 보수적인 위치 매핑 |
+| `vendor/pptx2html-engine/`, `tests/chart-engine.cjs` | 동일 엔진의 국소 차트 파서 패치, 고정 빌드 출처·라이선스·배포 패키지와 실제 WASM 회귀 검사 |
 | `src/theme-resolver.js` | 여러 master/theme의 명확한 색·글꼴 참조와 제한된 placeholder 상속 보정 |
 | `tests/fidelity.cjs`, `scripts/create-fidelity-fixtures.cjs` | 병합 표·중첩 그룹·여러 테마를 사용하는 실제 OOXML 회귀 사례 |
 | `docs/REFERENCE_REVIEW.md`, `.github/workflows/compatibility.yml` | 참고자료 분석·중복 제거 판단과 환경별 자동 검사 |
 | `src/input-package.js` | 문서 형식·보호 방식 판별, 입력 암호를 이용한 Office 복호화 |
 | `src/normalize-package.js` | PPTX 내부 절대 관계 경로 정규화와 압축 크기 검사 |
 | `src/exporter.js` | 변환 결과의 독립 HTML 구성 |
+| `tests/internal-links.cjs` | 실제 PPTX의 텍스트·도형·이미지 이동, 숨김·범위 선택, 키보드와 정화 회귀 검사 |
 | `src/viewer.js`, `src/viewer.css` | 저장 결과의 슬라이드 탐색·보기·인쇄 UI |
 | `scripts/build.mjs` | 소스와 의존성을 단일 `index.html`로 묶는 빌드 |
 | `scripts/create-fixtures.cjs`, `tests/offline.cjs` | 생성 fixture 및 오프라인 검증 |
@@ -191,7 +197,9 @@ Chrome for Testing의 실제 `file://` 환경에서 HTTP/HTTPS 요청을 모두 
 
 ## 오픈 소스 고지
 
-변환 엔진은 [`@briank-dev/pptx-to-html` 2.1.0](https://www.npmjs.com/package/@briank-dev/pptx-to-html)([상위 프로젝트 문서](https://github.com/brnyxx/pptx2html-turbo), MIT)을 사용합니다. HTML 정제에는 [`DOMPurify` 3.4.17](https://github.com/cure53/DOMPurify)(Apache-2.0 또는 MPL-2.0), 패키지 경로 호환 처리에는 [`JSZip` 3.10.1](https://github.com/Stuk/jszip)(MIT 선택)을 사용합니다. 빌드 과정에서 포함 의존성의 라이선스 문서가 `licenses/`에 생성되며, 원문 고지는 배포용 `index.html` 안에도 보존됩니다.
+변환 엔진은 [`@briank-dev/pptx-to-html` 2.1.0](https://www.npmjs.com/package/@briank-dev/pptx-to-html)([상위 프로젝트 문서](https://github.com/brnyxx/pptx2html-turbo), MIT)에 차트 파서의 국소 수정을 적용한 **`2.1.0-ppptx.1`**입니다. 같은 이름의 로컬 tarball 패키지 하나를 설치하며, 별도 렌더러를 병렬로 추가하지 않습니다. 고정 원본 소스·수정 patch·빌드 도구·해시·MIT 원문은 [`vendor/pptx2html-engine/`](vendor/pptx2html-engine/)에 있습니다. 일반 사용자는 Rust나 빌드 도구를 설치할 필요가 없습니다.
+
+HTML 정제에는 [`DOMPurify` 3.4.17](https://github.com/cure53/DOMPurify)(Apache-2.0 또는 MPL-2.0), 패키지 경로 호환 처리에는 [`JSZip` 3.10.1](https://github.com/Stuk/jszip)(MIT 선택)을 사용합니다. 빌드 과정에서 포함 의존성의 라이선스 문서가 `licenses/`에 생성되며, 엔진 버전·빌드 출처와 원문 고지는 배포용 `index.html` 안에도 보존됩니다.
 
 Office 암호 처리에는 [`officecrypto-tool` 0.0.19](https://github.com/zurmokeeper/officecrypto-tool)의 암호화 모듈, `cfb` 1.2.2, `xml2js` 0.6.2 및 Browserify 브라우저 구현을 포함합니다. 실제 번들에 포함된 패키지의 고지는 `licenses/OfficeCrypto-BUNDLED-LICENSES.txt`와 HTML 안에 함께 들어갑니다. 독립 기준 파일의 생성 정보와 해시는 `tests/reference/manifest.json`에 있습니다.
 

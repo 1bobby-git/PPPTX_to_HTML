@@ -49,7 +49,10 @@ async function main() {
     'src/native-cli-worker.cjs', 'src/conversion-core.js', 'src/input-package.js', 'src/normalize-package.js', 'src/chart-data.js', 'src/theme-resolver.js',
     'src/exporter.js', 'src/viewer.js', 'src/viewer.css',
     'src/web-shell.html', 'src/server-client.js', 'src/app.js', 'src/styles.css',
-    'docs/NATIVE_CLI.md', 'docs/WEB_SERVICE.md', 'docs/REFERENCE_REVIEW.md', 'package.json', 'package-lock.json', 'LICENSE'
+    'docs/NATIVE_CLI.md', 'docs/WEB_SERVICE.md', 'docs/REFERENCE_REVIEW.md', 'package.json', 'package-lock.json', 'LICENSE',
+    'vendor/pptx2html-engine/briank-dev-pptx-to-html-2.1.0-ppptx.1.tgz',
+    'vendor/pptx2html-engine/BUILD-INFO.json', 'vendor/pptx2html-engine/CHART-DEPTH.patch',
+    'vendor/pptx2html-engine/LICENSE', 'vendor/pptx2html-engine/SHA256SUMS'
   ]) await add(relative);
   await add('docs/NATIVE_CLI.md', 'README.md', text => text
     .replace('(../LICENSE)', '(LICENSE)').replace('(WEB_SERVICE.md)', '(docs/WEB_SERVICE.md)')

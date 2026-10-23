@@ -33,7 +33,9 @@ jobs:
       - run: npm run build
       - run: npm run test:core
       - run: npm run test:charts
+      - run: npm run test:engine
       - run: npm run test:fidelity
+      - run: npm run test:links
       - run: npm test
       - run: npm run test:native
       - run: npm run test:web
@@ -70,5 +72,8 @@ jobs:
       - run: npm run build
       - run: npm run test:fixtures
       - run: node tests/offline.cjs
+        env:
+          PPTX_TEST_BROWSER: ${{ matrix.browser }}
+      - run: npm run test:links
         env:
           PPTX_TEST_BROWSER: ${{ matrix.browser }}

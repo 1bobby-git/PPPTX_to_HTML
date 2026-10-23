@@ -1,0 +1,70 @@
+--- a/crates/pptx2html-core/src/parser/chart_parser.rs
++++ b/crates/pptx2html-core/src/parser/chart_parser.rs
+@@ -186,12 +186,13 @@
+                 }
+             }
+             Ok((namespace, Event::End(element))) => {
+-                depth = depth.saturating_sub(1);
+                 if !matches!(namespace, ResolveResult::Bound(ref value) if value.as_ref() == CLASSIC_CHART_NS)
+                 {
+                     buffer.clear();
+                     continue;
+                 }
++                // Match the start branch: only classic chart elements affect depth.
++                depth = depth.saturating_sub(1);
+                 let element_name = element.name();
+                 let local = xml_utils::local_name(element_name.as_ref());
+                 if is_chart_family(local) && family_depth == Some(depth) {
+--- a/crates/pptx2html-core/tests/chart_completeness_test.rs
++++ b/crates/pptx2html-core/tests/chart_completeness_test.rs
+@@ -767,3 +767,50 @@
+         "{error}"
+     );
+ }
++
++#[test]
++fn drawingml_chart_styles_do_not_corrupt_axis_classification() {
++    let styles = [
++        ("self-closing", r#"<c:spPr><a:noFill/></c:spPr>"#),
++        ("paired", r#"<c:spPr><a:noFill></a:noFill></c:spPr>"#),
++        (
++            "nested",
++            r#"<c:spPr><a:solidFill><a:srgbClr val="C0504D"/></a:solidFill></c:spPr>"#,
++        ),
++    ];
++    for (name, style) in styles {
++        let plot = family_plot("barChart").replacen("</c:tx>", &format!("</c:tx>{style}"), 1);
++        let xml = chart_space(&plot, axes()).replace(
++            "<c:chartSpace ",
++            "<c:chartSpace xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" ",
++        );
++        let result = convert_bytes_with_metadata(&package(Some(&xml), Some("rIdChart"), true))
++            .unwrap_or_else(|error| panic!("{name}: {error}"));
++        assert!(result.html.contains("class=\"chart-direct\""), "{name}");
++        assert!(
++            result.diagnostics.is_empty(),
++            "{name}: {:?}",
++            result.diagnostics
++        );
++    }
++}
++
++#[test]
++fn drawingml_chart_styles_do_not_accept_undefined_axes() {
++    let plot = family_plot("barChart")
++        .replacen(
++            "</c:tx>",
++            r#"</c:tx><c:spPr><a:solidFill><a:srgbClr val="C0504D"/></a:solidFill></c:spPr>"#,
++            1,
++        )
++        .replace("</c:barChart>", "<c:axId val=\"30\"/></c:barChart>");
++    let xml = chart_space(&plot, axes()).replace(
++        "<c:chartSpace ",
++        "<c:chartSpace xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" ",
++    );
++    let result = convert_bytes_with_metadata(&package(Some(&xml), Some("rIdChart"), true))
++        .expect("styled chart with an undefined axis returns a fallback");
++    assert!(!result.html.contains("class=\"chart-direct\""));
++    assert_eq!(result.diagnostics.len(), 1);
++    assert_eq!(result.diagnostics[0].code, "CHART_STRUCTURE_UNSUPPORTED");
++}

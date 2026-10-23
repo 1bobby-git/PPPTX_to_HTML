@@ -1,6 +1,6 @@
 {
   "name": "ppptx-to-html",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Web UI backed by an offline native PPTX to HTML CLI, plus a standalone browser converter",
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -8,7 +8,9 @@
     "test": "node tests/offline.cjs && node tests/protection.cjs",
     "test:core": "node tests/conversion-core.cjs",
     "test:charts": "node scripts/create-fixtures.cjs && node tests/chart-data.cjs",
+    "test:engine": "node scripts/create-fixtures.cjs && node tests/chart-engine.cjs",
     "test:fidelity": "node tests/fidelity.cjs",
+    "test:links": "node tests/internal-links.cjs",
     "test:fixtures": "node scripts/create-fixtures.cjs",
     "test:protection": "node scripts/create-fixtures.cjs && node tests/protection.cjs",
     "convert": "node tools/convert-pptx.cjs",
@@ -32,7 +34,7 @@
   },
   "homepage": "https://github.com/1bobby-git/PPPTX_to_HTML#readme",
   "dependencies": {
-    "@briank-dev/pptx-to-html": "2.1.0",
+    "@briank-dev/pptx-to-html": "file:vendor/pptx2html-engine/briank-dev-pptx-to-html-2.1.0-ppptx.1.tgz",
     "busboy": "1.6.0",
     "cfb": "1.2.2",
     "dompurify": "3.4.17",

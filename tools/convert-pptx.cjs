@@ -71,6 +71,11 @@ function check() {
     catch { fail('DEPENDENCY_MISSING', `Dependency ${name} is missing; run npm ci in the project directory.`); }
   }
   const engineDir = path.resolve(__dirname, '../node_modules/@briank-dev/pptx-to-html');
+  let enginePackage;
+  try { enginePackage = JSON.parse(fs.readFileSync(path.join(engineDir, 'package.json'), 'utf8')); }
+  catch { fail('DEPENDENCY_MISSING', 'Native engine metadata is missing or invalid; run npm ci.'); }
+  if (enginePackage.name !== '@briank-dev/pptx-to-html' || typeof enginePackage.version !== 'string')
+    fail('DEPENDENCY_MISSING', 'Native engine metadata is invalid; run npm ci.');
   if (!fs.existsSync(path.join(engineDir, 'pptx2html_wasm.js')) ||
       !fs.statSync(path.join(engineDir, 'pptx2html_wasm.js')).size) fail('DEPENDENCY_MISSING', 'Native engine module is missing; run npm ci.');
   const wasm = path.join(engineDir, 'pptx2html_wasm_bg.wasm');
@@ -90,7 +95,8 @@ function check() {
   }
   const jsdom = require('jsdom');
   if (typeof jsdom.JSDOM !== 'function' || typeof require('dompurify') !== 'function') fail('DEPENDENCY_MISSING', 'HTML sanitizer is unavailable.');
-  return {ok: true, engine: 'native', version: VERSION, node: process.version, wasmBytes: fs.statSync(wasm).size,
+  return {ok: true, engine: 'native', version: VERSION, enginePackage: enginePackage.name,
+    engineVersion: enginePackage.version, node: process.version, wasmBytes: fs.statSync(wasm).size,
     externalAppsRequired: false};
 }
 function deepCheck() {

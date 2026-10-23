@@ -4,7 +4,7 @@
 
 ## 결론과 이번 적용 범위
 
-현재의 `@briank-dev/pptx-to-html` **2.1.0** Rust/WASM 엔진과 오프라인 HTML exporter를 유지한다. 별도 변환 엔진을 나란히 추가하면 ZIP/XML 해석, 테마·레이아웃 처리, 글꼴·이미지·차트 출력과 보안 처리가 중복된다. 참고자료에서는 재현 가능한 결함과 작은 개선 아이디어를 골라 현재 경로에 반영한다.
+현재의 `@briank-dev/pptx-to-html` **2.1.0** Rust/WASM 엔진과 오프라인 HTML exporter를 유지한다. v1.5.1에서는 같은 엔진의 차트 파서에 국소 수정을 적용한 **`2.1.0-ppptx.1`** 패키지로 교체한다. 별도 변환 엔진을 나란히 추가하면 ZIP/XML 해석, 테마·레이아웃 처리, 글꼴·이미지·차트 출력과 보안 처리가 중복된다. 참고자료에서는 재현 가능한 결함과 작은 개선 아이디어를 골라 현재 경로에 반영한다.
 
 | 항목 | 상태 | 적용 내용과 의미 |
 | --- | --- | --- |
@@ -13,13 +13,25 @@
 | 컨테이너 밖으로 밀려난 슬라이드 복구 | 반영 | 일부 차트 대체 HTML이 컨테이너를 조기에 닫는 경우, 공통 exporter에서 유효한 `.slide-shell`을 순서대로 회수한다. 직접 `.slide` 자식이 없는 shell은 정상 슬라이드로 세지 않는다. |
 | 최종 슬라이드 장수·원본 번호 확인 | 반영 | 엔진 metadata 장수와 sanitize/export 이후 장수를 대조한다. 슬라이드가 사라졌는데 성공했다고 반환하지 않는다. 원본 번호가 유일하고 유효할 때만 `sourceSlides`를 제공하여 링크 매핑에 사용한다. |
 | 미지원 차트의 캐시 데이터 접근성 대체 표시 | 반영 | `src/chart-data.js`가 내부 캐시를 읽고 실제 프레젠테이션 순서·관계·위치가 유일하게 맞는 placeholder에 표를 제공한다. 원시 값임을 명시하고 기존 경고를 유지한다. 정상 SVG 차트와 외부 workbook은 건드리지 않는다. 원래 차트의 모양 재현을 의미하지 않는다. |
+| 스타일이 있는 정상 차트의 오인식 | 반영 | 동일 엔진에서 chart namespace의 시작·종료 태그 깊이를 대칭으로 계산한다. 정상 축을 가진 지원 차트가 DrawingML 스타일 때문에 거부되는 문제를 수정하며 스타일 삭제나 축 추정 복구는 하지 않는다. |
 | 여러 테마의 색상·글꼴 상속 | 반영, 범위 제한 | `src/theme-resolver.js`가 연결이 명확한 여러 master/theme의 색상·명시 글꼴을 해소하고, 제한된 placeholder 조건에서 전체 문단 기본값을 보존한다. 확인하지 못한 override나 상속은 원본을 유지하며 경고한다. |
+| 내부 링크·키보드 탐색 | 반영 | 텍스트·도형·이미지의 검증된 이동 동작을 정제한 요소로 보존한다. 결과 목록의 순서로 상대 이동을 계산하고, 숨김·범위 선택에서 빠진 고정 목적지로 잘못 이동하지 않게 한다. |
 | 그룹·색상 상속 진단 | 반영 | `chOff`, `chExt`, `masterClrMapping` 관련 진단을 무조건 숨기지 않고 도형·효과 경고로 요약한다. 실제 기하·상속 검증 없이 완전 지원으로 판단하지 않는다. |
 | 추가 변환 dependency·외부 엔진 코드 | 추가 없음 | 네 자료의 원저작 코드를 복제하지 않았다. Aspose SDK나 두 번째 JS 렌더러도 설치·추가하지 않았다. |
 
 공통 코어와 exporter 변경에 대한 회귀 항목은 `tests/conversion-core.cjs`에 있다. 범위·숨김 처리, 장수 불일치, 객체 해제, UTF-8 출력 제한, orphan shell 복구, 원본 번호와 안전한 링크를 검사한다. `tests/chart-data.cjs`는 실제 WASM·native worker·브라우저를 통해 캐시의 빈칸, 숫자, namespace, 악성처럼 보이는 텍스트, 한도, 순서·숨김·범위·모호한 위치를 검사한다.
 
 차트 테스트에서 엔진의 raw diagnostic `slide_index`가 실제 프레젠테이션 순서와 다를 수 있음을 확인했다. 차트는 `presentation.xml` 관계로 다시 매핑하며, 일반 경고에서는 이 불확실한 번호를 사용자 슬라이드 번호로 표시하지 않는다. 원본 번호가 확인되는 최종 출력의 `sourceSlides`는 유지한다.
+
+### v1.5.1: 기존 차트 엔진의 namespace 깊이 오류 수정
+
+고정 원본은 [`pptx2html-turbo` v2.1.0의 commit `183cb17c6e11b9f880a61c277f91cae31255520e`](https://github.com/brnyxx/pptx2html-turbo/tree/183cb17c6e11b9f880a61c277f91cae31255520e)이다. `chart_parser.rs`의 분류기는 chart namespace가 아닌 시작 태그를 깊이에 더하지 않지만, 종료 태그는 namespace 검사 전에 깊이를 뺐다. 따라서 `a:solidFill` 등 정상 DrawingML 스타일만으로 차트와 축의 중첩 깊이가 틀어졌다. 같은 지원 차트에서 `<a:noFill/>`는 SVG가 되고 의미가 같은 `<a:noFill></a:noFill>`는 `incompatible-axes`가 되는 최소 사례로 재현했다.
+
+패치는 깊이 감소를 chart namespace 검사 뒤로 옮겨 시작·종료 계산을 일치시킨다. 기존 XML의 색·글꼴·스타일을 삭제하거나 정의되지 않은 축을 추정해서 지우지 않는다. 원본에서는 새 회귀가 실패했고, 수정 후 기존 namespace·관계·축·캐시 검사와 새 회귀를 포함한 Rust 차트 검사 16개를 통과했다. 실제 WASM에서는 정상 2축+DrawingML 스타일 막대 차트의 세 막대가 값 `2:4:3`에 맞는 높이를 가지며 범주·계열 이름을 보존했다. 정의되지 않은 세 번째 축이 있는 기존 fixture는 계속 대체 표시가 되어, 잘못된 구조를 새로 허용하지 않았음을 확인했다.
+
+Rust 1.95.0, 고정 Cargo.lock, wasm-bindgen 0.2.114로 빌드했다. 패치 전 재빌드 결과는 기존 npm 패키지와 10개 probe의 HTML·진단이 동일했고, 패치 후 pie·병합 표·중첩 그룹·보정 전후 테마 출력도 기존 결과와 동일했다. [`vendor/pptx2html-engine/`](../vendor/pptx2html-engine/)에 원본 SHA, 패치, 빌드 정보·해시·MIT 원문과 실행 패키지를 남긴다. 배포된 HTML·Native CLI는 이 엔진 하나를 사용하며 Rust 도구는 일반 사용자에게 필요하지 않다.
+
+이 수정은 유효한 차트를 잘못 거부하는 문제를 해결한다. 기존 모델에는 개별 계열의 fill/line 보존 기능이 없어 확인한 `C0504D` 대신 테마 팔레트 `#4472C4`를 사용했고 전체 차트 제목도 표시하지 않았다. 따라서 SVG 변환 성공을 원본 차트 스타일의 완전한 일치로 설명하지 않는다. 단일 level의 `multiLvlStrRef` 캐시를 평탄화하는 수정도 실패 원인이 아니었으므로 추가하지 않았다.
 
 ## 네 참고자료의 비교
 
@@ -61,11 +73,21 @@
 서로 다른 두 master/theme를 사용하는 사례에서는 둘째 슬라이드가 첫 테마의 색과 동아시아 글꼴을 사용했다. 기대값은 둘째 테마의 `#BB3311`·`Microsoft YaHei`였지만 원래 엔진은 `#1122AA`·`Malgun Gothic`를 반환했다. `src/theme-resolver.js`는 관계가 명확한 여러 테마에 한해 다음을 보완한다.
 
 - theme의 명시적인 RGB 색과 `+mj/+mn` 글꼴 참조를 해소하고 tint·alpha 등 기존 자식 변환을 유지한다.
-- `body`·`title`·`ctrTitle` placeholder의 slide list style이 비어 있고 layout/master의 지역 텍스트 서식이 없는 경우, 해당 master의 문단 기본값 전체를 복사한다. 색·글꼴만 부분 삽입할 때 생겼던 글자 크기 변경을 방지한다.
+- `body`·`title`·`ctrTitle` placeholder의 slide list style이 비어 있거나 유효한 구조에서 생략되어 있고 layout/master의 지역 텍스트 서식이 없는 경우, 해당 master의 문단 기본값 전체를 복사한다. 색·글꼴만 부분 삽입할 때 생겼던 글자 크기 변경을 방지한다.
 - XML 전체를 다시 직렬화하지 않고 검증한 원문 구간만 수정한다. 도형·이미지·그룹의 혼합 순서와 알 수 없는 namespace 내용을 보존한다.
 - 단일 테마에는 원래 bytes를 반환한다. 상속·공유 관계가 모호하거나 override가 있거나 검사 한도를 넘으면 해당 원본을 유지하고 `THEME_INHERITANCE_UNRESOLVED`로 안내한다. 차트·다이어그램의 모든 테마 상속과 언어별 빈 글꼴 기본값은 해결했다고 주장하지 않는다.
 
 수정한 사례는 두 슬라이드 모두 원래 24pt 크기를 유지하고 각자의 색·동아시아 글꼴 이름을 사용한다. 이것은 출력 CSS와 OOXML 상속의 검증이며, 해당 글꼴이 모든 기기에 설치되어 있거나 동일한 글리프가 렌더링된다는 보장은 아니다. `--raw-theme-probe` 옵션은 보정 전 고정 엔진의 결함을 의도적으로 재현하는 별도 진단용이다.
+
+v1.5.1 후속 검사에서는 빈 `a:lstStyle` 하나를 생략하기만 해도 둘째 슬라이드가 다시 첫 테마의 색·글꼴을 사용했다. [Microsoft의 `CT_TextBody` 스키마](https://learn.microsoft.com/en-us/office/open-xml/presentation/how-to-move-a-paragraph-from-one-presentation-to-another#structure-of-the-shape-text-body)는 `bodyPr`, 선택적인 `lstStyle`, 하나 이상의 `p` 순서를 정의한다. 해당 생략이 유효하고 기존 상속 조건도 맞는 경우에만 `bodyPr` 다음에 동일한 문단 기본값을 삽입한다. 주석·다른 namespace prefix·원문 문단 순서를 보존하며, 잘못된 자식 순서나 알 수 없는 직접 자식은 그대로 두고 경고한다. 실제 WASM과 Native worker에서 원래 24pt, 둘째 테마의 `#BB3311`·`Microsoft YaHei`를 확인했다.
+
+### 실제 내부 링크를 저장할 때 사라지던 이동 동작
+
+엔진이 도형·이미지 링크를 빈 `button.shape-action-surface`로 출력하지만 기존 exporter는 모든 `button`을 제거했다. 다음·이전·처음·마지막의 `data-action`도 제거되어 클릭할 수 없었고, 텍스트의 `role="button"` 이동 요소는 Enter·Space에 반응하지 않았다. 일반 텍스트의 고정 목적지 번호 매핑 자체는 정확했다.
+
+v1.5.1은 검증한 엔진 이동 영역을 안전한 요소로 재구성하고, 내부 목적지와 네 상대 동작만 결과 슬라이드 번호에 연결한다. 일반 버튼·폼·스크립트를 허용하지 않으며 외부 자동 로드와 결과 CSP 제한도 유지한다. 제외된 고정 목적지는 다른 페이지로 치환하지 않으며 `SLIDE_LINK_TARGET_EXCLUDED`로 안내한다. 도형과 내부 텍스트의 목적지가 서로 다를 때 제외된 텍스트의 클릭이 아래쪽 도형 링크로 통과하던 오이동도 실제로 재현해 막았다.
+
+키보드 이동은 한 장씩 보기에서도 목적지 슬라이드로 포커스를 옮긴다. Firefox가 일반 anchor의 Enter 클릭에 Chromium과 다른 click count를 보내는 차이도 실제 확인해 처리했다. `tests/internal-links.cjs`는 파일 번호와 다른 발표 순서, 숨김 제외·포함, 부분 범위를 실제 PPTX/WASM으로 검사하고, 저장한 HTML의 클릭·Enter·Space, 포커스, 기본 anchor 클릭 중복과 도형·텍스트 링크 우선순위를 브라우저에서 확인한다.
 
 ## 3. Aspose: 명시적으로 구성할 수 있는 향후 후보
 

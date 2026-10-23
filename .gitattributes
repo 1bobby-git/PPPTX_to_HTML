@@ -1,0 +1,6 @@
+# Preserve the byte hashes recorded for the vendored engine on every checkout.
+vendor/pptx2html-engine/*.json text eol=lf
+vendor/pptx2html-engine/*.patch text eol=lf
+vendor/pptx2html-engine/LICENSE text eol=lf
+vendor/pptx2html-engine/SHA256SUMS text eol=lf
+vendor/pptx2html-engine/*.tgz binary

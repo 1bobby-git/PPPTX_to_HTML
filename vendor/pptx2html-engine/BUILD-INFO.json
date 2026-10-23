@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@briank-dev/pptx-to-html",
+    "version": "2.1.0-ppptx.1",
+    "archive": "briank-dev-pptx-to-html-2.1.0-ppptx.1.tgz",
+    "license": "MIT"
+  },
+  "change": "Count chart end elements only in the same namespace as chart start elements. This fixes false incompatible-axes fallbacks caused by nested DrawingML style elements. It does not add chart style rendering or repair undefined axes.",
+  "source": {
+    "repository": "https://github.com/brnyxx/pptx2html-turbo",
+    "tag": "v2.1.0",
+    "commit": "183cb17c6e11b9f880a61c277f91cae31255520e",
+    "archive": {
+      "url": "https://codeload.github.com/brnyxx/pptx2html-turbo/tar.gz/183cb17c6e11b9f880a61c277f91cae31255520e",
+      "file": "pptx2html-turbo-183cb17c6e11b9f880a61c277f91cae31255520e.tar.gz",
+      "sha256": "28fbb5f582186dfd134a61de0b9eef26a927c97ece80de225b683c208447d3a8"
+    },
+    "cargoLockSha256": "9e4ca08d804c05abccf6cecb8cd26fc21312cb146ba6da57e39e5948714e39ff"
+  },
+  "upstreamPackage": {
+    "version": "2.1.0",
+    "url": "https://registry.npmjs.org/@briank-dev/pptx-to-html/-/pptx-to-html-2.1.0.tgz",
+    "file": "pptx-to-html-2.1.0.tgz",
+    "sha256": "611b5be4f2f3119c71ce0277f5428cdaa070115c81b861f94b0c8048730b284b",
+    "integrity": "sha512-4wEECSHa0vBHuSMzaK3xGMzHqwedRPKPeF/1cJiBc+xnED+sZbP8ZlqTBfMGj5oR8BEmbCcmleM0xM8dhgHyxA=="
+  },
+  "patch": {
+    "file": "CHART-DEPTH.patch",
+    "sha256": "2fc70e7745509aecf6ae6fcc62982450d94bb57bb0ed64b0e2595155cc459062",
+    "files": [
+      {
+        "path": "crates/pptx2html-core/src/parser/chart_parser.rs",
+        "beforeSha256": "fc885fbc2d835fc6088496509fcbb87b9f223b8e24bfed75fe5942b9edf2baf5",
+        "afterSha256": "4c7660ba11e88b711baad0222140822317c83eb2a1f70413f58645b1dc54feef"
+      },
+      {
+        "path": "crates/pptx2html-core/tests/chart_completeness_test.rs",
+        "beforeSha256": "3271f275beb39a56e6c602c4edc77651103cbd6b7457e05b6346bdbe6c99b46f",
+        "afterSha256": "77def209be359a796f1bf2f95ed6ba5a35618a79442c34288fcb8064e71cbc8e"
+      }
+    ]
+  },
+  "toolchain": {
+    "host": "x86_64-unknown-linux-gnu",
+    "rustVersion": "1.95.0",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+    "rustManifestSha256": "821ff14e4c4a1cbe1e8915f35aff0a3fbbdf8d293ad48ab8f31e3b0440c581f9",
+    "components": [
+      {
+        "package": "rustc",
+        "target": "x86_64-unknown-linux-gnu",
+        "url": "https://static.rust-lang.org/dist/2026-04-16/rustc-1.95.0-x86_64-unknown-linux-gnu.tar.xz",
+        "sha256": "8426a3d170a5879f5682f5fbdd024a1779b3951e7baba685af2d6dc32a6dfc15",
+        "file": "rustc-1.95.0-x86_64-unknown-linux-gnu.tar.xz"
+      },
+      {
+        "package": "cargo",
+        "target": "x86_64-unknown-linux-gnu",
+        "url": "https://static.rust-lang.org/dist/2026-04-16/cargo-1.95.0-x86_64-unknown-linux-gnu.tar.xz",
+        "sha256": "e74edd2cf7d0f1f1383b4f00eb90c843750bc489e2ccf7214e6476678a907425",
+        "file": "cargo-1.95.0-x86_64-unknown-linux-gnu.tar.xz"
+      },
+      {
+        "package": "rust-std",
+        "target": "x86_64-unknown-linux-gnu",
+        "url": "https://static.rust-lang.org/dist/2026-04-16/rust-std-1.95.0-x86_64-unknown-linux-gnu.tar.xz",
+        "sha256": "047ea7098803d3500fa1072e9cee5392697e21525559e4458128a2bf874aa382",
+        "file": "rust-std-1.95.0-x86_64-unknown-linux-gnu.tar.xz"
+      },
+      {
+        "package": "rust-std",
+        "target": "wasm32-unknown-unknown",
+        "url": "https://static.rust-lang.org/dist/2026-04-16/rust-std-1.95.0-wasm32-unknown-unknown.tar.xz",
+        "sha256": "5587b89ff69623d09e476439d44a24453b4e4ea3d5e0b53a5c0a935151ff3fd1",
+        "file": "rust-std-1.95.0-wasm32-unknown-unknown.tar.xz"
+      }
+    ],
+    "wasmBindgen": {
+      "version": "0.2.114",
+      "url": "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.114/wasm-bindgen-0.2.114-x86_64-unknown-linux-musl.tar.gz",
+      "file": "wasm-bindgen-0.2.114-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "ce21be002bdbc22ede2a5cf250cb801d2106956fc3c529c75d9452729db3490c"
+    }
+  },
+  "build": {
+    "nodeVersion": "v24.19.0",
+    "npmVersion": "11.9.0",
+    "cargoArguments": [
+      "build",
+      "--locked",
+      "-p",
+      "pptx2html-wasm",
+      "--target",
+      "wasm32-unknown-unknown",
+      "--release"
+    ],
+    "rustFlags": [
+      "--remap-path-prefix={workDirectory}=/pptx-engine-build"
+    ],
+    "wasmBindgenArguments": [
+      "--target",
+      "web",
+      "--out-name",
+      "pptx2html_wasm"
+    ],
+    "wasmOpt": false,
+    "testArguments": [
+      "test",
+      "--locked",
+      "-p",
+      "pptx2html-core",
+      "--test",
+      "chart_completeness_test"
+    ],
+    "baselineNote": "The comparison baseline used the same source, Cargo.lock, Rust and wasm-bindgen without the patch or path-remapping flag. Its HTML/diagnostic equality is a behavior comparison, not a binary equality claim."
+  },
+  "artifacts": {
+    "pptx2html_wasm.js": {
+      "upstreamSha256": "3bd2dfebd55619ad930c0a97e473556ea930f66052006f9c3f3a286d2c89a0cd",
+      "baselineSha256": "3bd2dfebd55619ad930c0a97e473556ea930f66052006f9c3f3a286d2c89a0cd",
+      "patchedSha256": "3bd2dfebd55619ad930c0a97e473556ea930f66052006f9c3f3a286d2c89a0cd",
+      "patchedBytes": 17190
+    },
+    "pptx2html_wasm.d.ts": {
+      "upstreamSha256": "ec8a5012729fa59b1b6cc39d17bb6692420168f6b073a981941fd0701e83cf62",
+      "baselineSha256": "ec8a5012729fa59b1b6cc39d17bb6692420168f6b073a981941fd0701e83cf62",
+      "patchedSha256": "ec8a5012729fa59b1b6cc39d17bb6692420168f6b073a981941fd0701e83cf62",
+      "patchedBytes": 6285
+    },
+    "pptx2html_wasm_bg.wasm": {
+      "upstreamSha256": "3e86bc9e73a2ce08907b5ab3533a0d68d416d736eb7384292db35b9b95c880f5",
+      "baselineSha256": "bd54ce6184186956cb331bef28e820b855a53c1967c42314ed2df66c0eb36e28",
+      "patchedSha256": "629906f45e2330e66b0f93b27224c162cedc916d291774e2c0b9122b5ac69b4c",
+      "patchedBytes": 2289089
+    }
+  },
+  "verification": {
+    "upstreamRegression": "The paired noFill case fails on upstream v2.1.0; the undefined-axis case remains a fallback.",
+    "rustChartSuite": {
+      "passed": 16,
+      "failed": 0
+    },
+    "releasedVersusRebuiltBaseline": "HTML and diagnostics are byte-identical for 10 synthetic probes.",
+    "unchangedAfterPatch": [
+      "original chart with undefined third axis",
+      "basic pie chart",
+      "nested groups",
+      "merged table",
+      "raw multi-theme output (known theme limitation retained)",
+      "resolved multi-theme output"
+    ],
+    "fixedAfterPatch": [
+      "valid two-axis chart with original PptxGenJS styles",
+      "paired noFill",
+      "nested solidFill"
+    ],
+    "styleLimit": "Observed source series color C0504D is still rendered as theme accent 4472C4; custom series lines and the overall chart title are not newly supported."
+  }
+}

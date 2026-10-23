@@ -145,9 +145,14 @@ function inheritedStyleEdits(slideDoc,layoutDoc,masterDoc,theme,colorMap,state,b
     const ph=placeholder(shape), type=attr(ph,'type');
     const body=child(shape,P,'txBody'), list=child(body,A,'lstStyle');
     if (!body) continue;
+    const bodyProps=child(body,A,'bodyPr');
+    // CT_TextBody permits an omitted lstStyle between bodyPr and its paragraphs.
+    // Only insert into that known sequence; do not repair unknown/invalid bodies.
+    const canInsert=!list && body.children.length>1 && body.children[0]===bodyProps &&
+      body.children.slice(1).every(node=>node.uri===A && node.local==='p');
     const listAttributes=list ? Object.values(list.attrs).filter(value=>value.uri!=='http://www.w3.org/2000/xmlns/') : [];
     const layouts=matchingPlaceholder(layoutDoc,ph), masters=matchingPlaceholder(masterDoc,ph);
-    if (child(shape,P,'style')?.children.length || !['body','title','ctrTitle'].includes(type) || !list || list.children.length || listAttributes.length ||
+    if (child(shape,P,'style')?.children.length || !['body','title','ctrTitle'].includes(type) || (!list && !canInsert) || list?.children.length || listAttributes.length ||
         layouts.length>1 || masters.length>1 || [...layouts,...masters].some(hasLocalTextStyle)) {state.partial=true;continue;}
     const styles=descendants(masterDoc,P,'txStyles')[0];
     const sourceStyle=child(styles,P,type==='body' ? 'bodyStyle' : 'titleStyle');
@@ -169,7 +174,7 @@ function inheritedStyleEdits(slideDoc,layoutDoc,masterDoc,theme,colorMap,state,b
     const copyState={partial:false}, copiedEdits=editsFor(copied,theme,colorMap,copyState);
     if (copyState.partial) {state.partial=true;continue;}
     const resolved=apply(snippet,copiedEdits);
-    edits.push({start:list.start,end:list.end,value:resolved});
+    edits.push({start:list ? list.start : bodyProps.end,end:list ? list.end : bodyProps.end,value:resolved});
   }
   return edits;
 }

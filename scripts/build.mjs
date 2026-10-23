@@ -8,6 +8,16 @@ import browserify from 'browserify';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (path) => readFile(join(root, path), 'utf8');
 const enginePath = 'node_modules/@briank-dev/pptx-to-html/';
+const enginePackage = JSON.parse(await read(enginePath + 'package.json'));
+const engineVersion = enginePackage.version;
+if (enginePackage.name !== '@briank-dev/pptx-to-html' || typeof engineVersion !== 'string' ||
+    !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(engineVersion)) {
+  throw new Error('Unexpected engine package metadata.');
+}
+const engineBuildInfo = await read(enginePath + 'BUILD-INFO.json').catch(error => {
+  if (error.code === 'ENOENT') return '';
+  throw error;
+});
 const [shell, css, app, adapter, exporterTemplate, viewer, viewerCss, glueSource, wasm, purifierSource, engineLicense, purifierLicense, zipSource, zipLicense, normalizer, conversionCore] = await Promise.all([
   read('src/shell.html'), read('src/styles.css'), read('src/app.js'), read('src/worker.js'),
   read('src/exporter.js'), read('src/viewer.js').then(source => source.replace(/\r\n?/g, '\n')), read('src/viewer.css'),
@@ -58,7 +68,7 @@ const glue = glueSource
   .replace("module_or_path = new URL('pptx2html_wasm_bg.wasm', import.meta.url);", "throw new Error('Embedded WASM bytes are required.');");
 if (/\bimport\.meta\b|^export\b/m.test(glue)) throw new Error('Unexpected upstream module format; review before bundling.');
 const worker = zipSource + '\n' + cryptoSource + '\n' + normalizer + '\n' + conversionCore + '\n' +
-  '/* pptx2html-turbo v2.1.0 — MIT — Copyright (c) 2026 Brian Kim */\n' +
+  '/* pptx2html-turbo v' + engineVersion + ' — MIT — Copyright (c) 2026 Brian Kim */\n' +
   glue + '\nconst EMBEDDED_WASM_BASE64 = ' + JSON.stringify(wasm.toString('base64')) + ';\n' + adapter;
 let exporter = replaceOnce(exporterTemplate, '/* VIEWER_CSS */ null', JSON.stringify(viewerCss));
 exporter = replaceOnce(exporter, '/* VIEWER_SCRIPT */ null', JSON.stringify(viewer));
@@ -73,7 +83,9 @@ html = replaceOnce(html, '<!-- APP_STYLES -->', '<style>\n' + css + '\n</style>'
 html = replaceOnce(html, '<!-- ENGINE_WORKER -->', '<script id="engine-worker" type="text/plain">\n' + scriptSafe(worker) + '\n</script>');
 html = replaceOnce(html, '<!-- APP_SCRIPT -->', [purifier, exporter, app].map((code) => '<script>\n' + scriptSafe(code) + '\n</script>').join('\n'));
 html = html.replace('</head>', '<!-- Bundled third-party licenses are in the inert block at the end of this file. -->\n</head>');
-const licenseText = 'pptx2html-turbo 2.1.0\n' + engineLicense + '\n\nDOMPurify (Apache-2.0 OR MPL-2.0)\n' + purifierLicense + '\n\nJSZip 3.10.1 (MIT option selected)\n' + zipLicense + '\n\nOffice password reader and bundled dependencies\n' + cryptoLicenses;
+const licenseText = 'pptx2html-turbo ' + engineVersion + '\n' + engineLicense +
+  (engineBuildInfo ? '\n\nPatched engine build information\n' + engineBuildInfo : '') +
+  '\n\nDOMPurify (Apache-2.0 OR MPL-2.0)\n' + purifierLicense + '\n\nJSZip 3.10.1 (MIT option selected)\n' + zipLicense + '\n\nOffice password reader and bundled dependencies\n' + cryptoLicenses;
 // Vendor code may contain literal HTML strings. Insert at the actual closing body,
 // never the first occurrence of </body> inside an embedded JavaScript string.
 const bodyEnd = html.lastIndexOf('</body>');

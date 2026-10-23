@@ -96,15 +96,35 @@
   previous.addEventListener('click', function () { goTo(current - 1, false); });
   next.addEventListener('click', function () { goTo(current + 1, false); });
   select.addEventListener('change', function () { goTo(Number(select.value), false); });
-  slidesHost.addEventListener('click', function (event) {
-    const link = event.target.closest('a[href^="#ptv-slide-"]');
-    const action = event.target.closest('[data-slide-target], [data-target-slide]');
+  function navigationIndex(target) {
+    const link = target.closest('a[href^="#ptv-slide-"]');
+    const action = target.closest('[data-slide-target], [data-target-slide]');
     const raw = link ? link.getAttribute('href').slice('#ptv-slide-'.length) :
       action && (action.getAttribute('data-slide-target') || action.getAttribute('data-target-slide'));
     const number = Number(raw);
-    if (!Number.isInteger(number) || number < 1 || number > shells.length) return;
+    return Number.isInteger(number) && number >= 1 && number <= shells.length ? number - 1 : null;
+  }
+
+  slidesHost.addEventListener('click', function (event) {
+    const destination = navigationIndex(event.target);
+    if (destination === null) return;
     event.preventDefault();
-    goTo(number - 1, false);
+    // Firefox uses a nonzero click count for anchor Enter but no pointer type.
+    // Keep keyboard focus on the destination when the original link is hidden.
+    goTo(destination, event.detail === 0 || event.pointerType === '');
+  });
+  slidesHost.addEventListener('keydown', function (event) {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey ||
+        (event.key !== 'Enter' && event.key !== ' ')) return;
+    // Native links already synthesize their own Enter click. Only emulate the
+    // keyboard behavior of the engine's non-native navigation buttons.
+    if (event.target.closest('a[href], button, input, select, textarea')) return;
+    const action = event.target.closest('[role="button"][data-slide-target], [role="button"][data-target-slide]');
+    if (!action) return;
+    const destination = navigationIndex(action);
+    if (destination === null) return;
+    event.preventDefault();
+    goTo(destination, true);
   });
   mode.addEventListener('click', function () {
     oneAtATime = !oneAtATime;

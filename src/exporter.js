@@ -23,6 +23,7 @@
   const REF_ATTRS = new Set([
     'aria-labelledby', 'aria-describedby', 'for', 'headers'
   ]);
+  const NAVIGATION_ACTIONS = new Set(['slide', 'next', 'previous', 'first', 'last']);
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, function (ch) {
@@ -58,7 +59,23 @@
     return value.replace(/</g, '\\3c ');
   }
 
-  function cleanNodes(root, slideNumber, slideTargets, status) {
+  function retainNavigationSurfaces(root) {
+    // The pinned engine represents shape/image links as empty buttons. Rebuild
+    // only those navigation surfaces; arbitrary buttons and forms stay forbidden.
+    root.querySelectorAll('button.shape-action-surface').forEach(function (button) {
+      if (button.getAttribute('type') !== 'button' || button.childNodes.length ||
+          !button.parentElement?.classList.contains('shape') ||
+          !NAVIGATION_ACTIONS.has(button.getAttribute('data-action'))) return;
+      const surface = document.createElement('span');
+      surface.className = 'shape-action-surface';
+      for (const name of ['data-action', 'data-slide-target', 'title', 'aria-label']) {
+        if (button.hasAttribute(name)) surface.setAttribute(name, button.getAttribute(name));
+      }
+      button.replaceWith(surface);
+    });
+  }
+
+  function cleanNodes(root, slideNumber, slideCount, slideTargets, status) {
     const idMap = new Map();
     const used = new Set();
     root.querySelectorAll('[id]').forEach(function (node) {
@@ -72,6 +89,18 @@
     const all = [root].concat(Array.from(root.querySelectorAll('*')));
     all.forEach(function (node) {
       const wasTimed = node.hasAttribute('data-timing-initial');
+      const action = node.getAttribute('data-action');
+      const rawTarget = (node.getAttribute('data-slide-target') || node.getAttribute('data-target-slide') || '').trim();
+      const hadNavigation = action !== null || node.hasAttribute('data-slide-target') || node.hasAttribute('data-target-slide');
+      const fixedTarget = action === 'slide' || (!action && rawTarget);
+      // Relative actions follow the exported selection, including its hidden
+      // slide setting. Fixed links only resolve to an included original slide.
+      let target = null;
+      if (action === 'next') target = Math.min(slideCount, slideNumber + 1);
+      else if (action === 'previous') target = Math.max(1, slideNumber - 1);
+      else if (action === 'first') target = 1;
+      else if (action === 'last') target = slideCount;
+      else if (fixedTarget) target = slideTargets.get(rawTarget) || slideTargets.get('slide-' + rawTarget);
       for (const attr of Array.from(node.attributes)) {
         const name = attr.name.toLowerCase();
         const value = attr.value.trim();
@@ -122,14 +151,34 @@
           continue;
         }
         if (name === 'data-slide-target' || name === 'data-target-slide') {
-          const target = slideTargets.get(value) || slideTargets.get('slide-' + value);
-          if (target) node.setAttribute(attr.name, String(target));
-          else node.removeAttribute(attr.name);
+          // Add the single, validated destination below after removing source
+          // action metadata. This also avoids remapping relative actions twice.
+          node.removeAttribute(attr.name);
           continue;
         }
         if (/url\s*\(/i.test(value)) node.setAttribute(attr.name, cleanCss(value.replace(/url\(\s*(['"]?)#([^)'"\s]+)\1\s*\)/gi, function (match, quote, id) {
           return 'url(#' + (idMap.get(id) || id) + ')';
         }), status));
+      }
+      if (target) {
+        node.setAttribute('data-slide-target', String(target));
+        // Keep the engine's pointer-event selector for linked text over a shape
+        // surface, but only with a constant action understood by our own viewer.
+        node.setAttribute('data-action', 'slide');
+        if (node.localName.toLowerCase() !== 'a') {
+          node.setAttribute('role', 'button');
+          node.setAttribute('tabindex', '0');
+        }
+      } else if (hadNavigation) {
+        if (fixedTarget) status.missingSlideTarget = true;
+        if (node.classList.contains('shape-action-surface')) node.remove();
+        else {
+          if (node.getAttribute('role') === 'button') node.removeAttribute('role');
+          node.removeAttribute('tabindex');
+          // A text run may override a different shape-level link. Once its
+          // target is excluded, keep clicks from falling through to that surface.
+          if (node.classList.contains('run')) node.style.pointerEvents = 'auto';
+        }
       }
       if (wasTimed) {
         node.style.removeProperty('visibility');
@@ -226,7 +275,7 @@
         slideIndex: Number.isInteger(entry && entry.slideIndex) ? entry.slideIndex : null
       };
     }) : [];
-    const status = { external: false, timing: false };
+    const status = { external: false, timing: false, missingSlideTarget: false };
 
     // A template is inert; only selected style text and slide markup ever leave it.
     const sourceTemplate = document.createElement('template');
@@ -274,6 +323,7 @@
     const slideMarkup = records.map(function (record, index) {
       const slide = record.slide;
       addChartData(slide, record.sourceNumber, source.chartData);
+      retainNavigationSurfaces(slide);
       if (/data-timing-initial\s*=/i.test(slide.outerHTML)) status.timing = true;
       const sanitized = global.DOMPurify.sanitize(slide.outerHTML, {
         USE_PROFILES: { html: true, svg: true, svgFilters: true },
@@ -284,7 +334,7 @@
       });
       const cleanSlide = sanitized.querySelector('.slide');
       if (!cleanSlide) return '';
-      cleanNodes(cleanSlide, index + 1, slideTargets, status);
+      cleanNodes(cleanSlide, index + 1, records.length, slideTargets, status);
       cleanSlide.id = 'ptv-slide-' + (index + 1);
       cleanSlide.dataset.slide = String(index + 1);
       cleanSlide.style.width = width + 'px';
@@ -306,6 +356,7 @@
 
     if (status.timing) diagnostics.push({ code: 'STATIC_ANIMATION', message: '애니메이션은 정적 상태로 표시됩니다.', slideIndex: null });
     if (status.external) diagnostics.push({ code: 'EXTERNAL_RESOURCE_BLOCKED', message: '외부 리소스를 제거했습니다. 포함된 이미지와 미디어만 표시됩니다.', slideIndex: null });
+    if (status.missingSlideTarget) diagnostics.push({ code: 'SLIDE_LINK_TARGET_EXCLUDED', message: '내보내기에 포함되지 않은 슬라이드로 이동하는 링크는 비활성화했습니다.', slideIndex: null });
 
     const viewerCss = typeof VIEWER_CSS === 'string' ? VIEWER_CSS : '';
     const viewerScript = typeof VIEWER_SCRIPT === 'string' ? VIEWER_SCRIPT : '';

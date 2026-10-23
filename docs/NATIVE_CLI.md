@@ -1,10 +1,10 @@
-# PPTX → HTML Native CLI · v1.5.0
+# PPTX → HTML Native CLI · v1.5.1
 
 이 CLI는 **PowerPoint, LibreOffice, 브라우저 프로그램을 실행하지 않습니다.** Node.js 안에서 PPTX의 ZIP/XML을 읽고, 기존 JavaScript/WASM 변환 엔진으로 HTML·표·이미지·SVG 도형을 만듭니다. PDF나 슬라이드 전체 PNG를 중간 결과로 저장하지 않습니다.
 
 결과물은 이미지와 탐색 UI가 내장된 **HTML 한 파일**입니다. 변환이 끝나면 해당 HTML을 더블클릭하여 로컬 브라우저에서 볼 수 있습니다. 결과를 보는 컴퓨터에는 Node.js나 원본 PPTX가 필요하지 않습니다.
 
-사용자가 CLI를 직접 다루지 않게 하려면 [웹 서비스 안내](WEB_SERVICE.md)를 따라 운영자가 서비스를 준비하세요. v1.5.0 의존성 포함 ZIP에도 웹 서비스 파일이 들어 있습니다. 일반 사용자는 제공된 웹 주소만 열면 됩니다.
+사용자가 CLI를 직접 다루지 않게 하려면 [웹 서비스 안내](WEB_SERVICE.md)를 따라 운영자가 서비스를 준비하세요. v1.5.1 의존성 포함 ZIP에도 웹 서비스 파일이 들어 있습니다. 일반 사용자는 제공된 웹 주소만 열면 됩니다.
 
 ## Windows에서 실행
 
@@ -20,7 +20,7 @@ Node.js를 설치할 수 없는 환경에서 회사가 허용한 휴대용 Node.
 
 ### 2. 변환기 준비
 
-**의존성 포함 배포본** `PPPTX_to_HTML_Native_v1.5.0.zip`을 받았다면 압축만 풉니다. `node_modules`도 함께 들어 있으므로 npm 설치 단계 없이 오프라인에서 사용할 수 있습니다.
+**의존성 포함 배포본** `PPPTX_to_HTML_Native_v1.5.1.zip`을 받았다면 압축만 풉니다. `node_modules`도 함께 들어 있으므로 npm 설치 단계 없이 오프라인에서 사용할 수 있습니다.
 
 **GitHub의 Code → Download ZIP**으로 소스를 받았다면, 압축을 푼 프로젝트 폴더에서 최초 한 번 다음 명령을 실행합니다.
 
@@ -118,6 +118,7 @@ PowerPoint와 Office의 클라우드 연동을 호출하지 않습니다. 변환
 - 자동으로 불러오는 외부 리소스는 제거하고, 포함된 이미지와 미디어만 유지합니다. 일반 웹 하이퍼링크는 사용자 클릭으로 열 수 있습니다.
 - 애니메이션·전환은 정적인 화면입니다. SmartArt, OLE, 수식, 일부 차트·효과는 대체 표시 또는 경고가 생길 수 있습니다.
 - 미지원 차트는 원래 순서·관계·위치가 유일하게 일치할 때 내부 캐시의 원시 값을 표로 표시합니다. 외부 workbook은 열지 않으며 숫자 서식은 적용하지 않습니다. 최대 100개 차트, 차트당 100행·16계열, 셀당 256자, XML당 2 MiB·누적 16 MiB, 메타데이터 1 MiB 한도가 적용됩니다.
+- v1.5.1의 `2.1.0-ppptx.1` 엔진은 DrawingML 스타일 때문에 정상 차트를 잘못된 축으로 오인하던 파서 오류를 수정합니다. SVG 차트의 개별 계열 채우기·선·전체 제목까지 완전하게 재현하는 기능은 아니며, 잘못된 축과 미지원 차트는 기존 경고·대체 표시를 유지합니다. `--check`의 `enginePackage`와 `engineVersion`으로 실제 설치 엔진을 확인할 수 있습니다.
 - 여러 master/theme는 관계가 명확한 색·명시 글꼴과 제한된 placeholder 상속을 보완합니다. 불확실한 상속·override는 원본을 유지하고 `THEME_INHERITANCE_UNRESOLVED` 경고를 반환합니다. 구현 범위와 실제 회귀 사례는 [참고자료 분석](REFERENCE_REVIEW.md)에 있습니다.
 - 글꼴은 결과를 보는 기기에 설치된 글꼴에 영향을 받습니다. 모든 문서의 배치와 줄바꿈이 PowerPoint와 같지는 않습니다.
 
@@ -173,7 +174,7 @@ npm run package:native
 ## 참고 프로젝트와 라이선스
 
 - [`g21589/PPTX2HTML`](https://github.com/g21589/PPTX2HTML): 사용자가 제시한 JavaScript ZIP/XML → HTML·SVG 구현을 구조 참고로 검토했습니다. 이 CLI의 렌더러로 해당 저장소를 직접 가져오지는 않았습니다.
-- [`pptx2html-turbo` / `@briank-dev/pptx-to-html` 2.1.0](https://github.com/brnyxx/pptx2html-turbo): 실제 변환 엔진, MIT.
+- [`pptx2html-turbo` / `@briank-dev/pptx-to-html`](https://github.com/brnyxx/pptx2html-turbo): 실제 변환 엔진, MIT. 2.1.0 기반의 로컬 패치 버전 **2.1.0-ppptx.1**을 사용합니다. [패치와 재현 빌드 안내](../vendor/pptx2html-engine/README.md)를 참고하세요.
 - [`DOMPurify` 3.4.17](https://github.com/cure53/DOMPurify): HTML·SVG 정화, Apache-2.0 또는 MPL-2.0.
 - [`jsdom` 30.1.3](https://github.com/jsdom/jsdom): Node.js 안의 DOM 처리, MIT.
 - [`JSZip` 3.10.1](https://github.com/Stuk/jszip): ZIP 읽기 및 호환 처리, MIT 선택.
