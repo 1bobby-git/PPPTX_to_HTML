@@ -142,6 +142,75 @@
     });
   }
 
+  function addChartData(slide, sourceNumber, input) {
+    if (!sourceNumber || !Array.isArray(input) || input.length > 100) return;
+    function near(a, b) { return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 0.11; }
+    function sameRect(a, b) { return a && b && ['x', 'y', 'width', 'height'].every(k => near(a[k] / 9525, b[k] / 9525)); }
+    const records = input.filter(r => r && r.slideNumber === sourceNumber && r.rect &&
+      Object.values(r.rect).every(n => Number.isFinite(n) && Math.abs(n) <= 30000 * 9525));
+    const placeholders = Array.from(slide.querySelectorAll('.chart-placeholder')).filter(p => p.parentElement?.classList.contains('shape'));
+    for (const record of records) {
+      if (records.filter(other => sameRect(record.rect, other.rect)).length !== 1) continue;
+      const matched = placeholders.filter(p => {
+        const shape = p.parentElement;
+        if (p.closest('.slide') !== slide || shape.querySelector('.chart-direct')) return false;
+        // Only untransformed top-level chart frames can be matched from these
+        // engine diagnostics. Group-relative coordinates are intentionally skipped.
+        for (let n = shape; n && n !== slide; n = n.parentElement) {
+          if ((n !== shape && n.classList.contains('shape')) ||
+              (n.style.transform && n.style.transform !== 'none') ||
+              (n !== shape && (n.style.left || n.style.top))) return false;
+        }
+        return [['left', 'x'], ['top', 'y'], ['width', 'width'], ['height', 'height']].every(([css, key]) =>
+          /^-?\d+(?:\.\d+)?px$/.test(shape.style[css]) && near(parseFloat(shape.style[css]), record.rect[key] / 9525));
+      });
+      if (matched.length !== 1) continue;
+      const placeholder = matched[0];
+      if (placeholder.querySelector('.chart-cache-data')) continue;
+      const box = document.createElement('div');
+      box.className = 'chart-cache-data';
+      box.style.cssText = 'padding:12px;color:#334155;font-size:13px;line-height:1.4;text-align:left';
+      const note = document.createElement('p');
+      note.textContent = '원본 차트 대신 문서에 저장된 데이터 · Cached data, not the original chart';
+      box.appendChild(note);
+      if (record.status === 'cached' && Array.isArray(record.columns) && record.columns.length <= 32 &&
+          Array.isArray(record.rows) && record.rows.length <= 100 && record.rows.length &&
+          record.rows.every(row => Array.isArray(row) && row.length === record.columns.length && row.every(v => typeof v === 'string' && v.length <= 256)) &&
+          record.columns.every(v => typeof v === 'string' && v.length <= 256)) {
+        const table = document.createElement('table');
+        table.style.cssText = 'border-collapse:collapse;width:100%;font-size:12px';
+        const caption = document.createElement('caption');
+        caption.textContent = '저장된 차트 캐시의 원시 값 (백분율·날짜 등 숫자 서식 미적용, 빈칸은 저장된 값 없음, 긴 텍스트는 256자까지 표시)';
+        table.appendChild(caption);
+        const head = document.createElement('thead'), heading = document.createElement('tr');
+        ['행'].concat(record.columns).forEach(label => {
+          const th = document.createElement('th'); th.scope = 'col'; th.textContent = label;
+          th.style.cssText = 'border:1px solid #94a3b8;padding:4px;text-align:left'; heading.appendChild(th);
+        });
+        head.appendChild(heading); table.appendChild(head);
+        const body = document.createElement('tbody');
+        record.rows.forEach((row, index) => {
+          const tr = document.createElement('tr'), th = document.createElement('th');
+          th.scope = 'row'; th.textContent = String(index + 1); tr.appendChild(th);
+          row.forEach(value => { const td = document.createElement('td'); td.textContent = value;
+            td.style.cssText = 'border:1px solid #cbd5e1;padding:4px'; tr.appendChild(td); });
+          body.appendChild(tr);
+        });
+        table.appendChild(body); box.appendChild(table);
+      } else {
+        const reason = document.createElement('p');
+        reason.textContent = record.status === 'limit' ? '저장된 데이터가 표시 한도(100행·16계열)를 초과합니다.' :
+          record.status === 'empty' ? '문서에 저장된 차트 캐시 값이 없습니다.' : '저장된 차트 데이터를 안전하게 읽을 수 없습니다.';
+        box.appendChild(reason);
+      }
+      placeholder.replaceChildren(box);
+      placeholder.style.cssText = 'display:block;overflow:auto;box-sizing:border-box;width:100%;height:100%;background:#f8fafc;border:1px dashed #94a3b8';
+      placeholder.setAttribute('tabindex', '0');
+      placeholder.setAttribute('role', 'region');
+      placeholder.setAttribute('aria-label', '저장된 차트 데이터');
+    }
+  }
+
   function prepare(options) {
     if (!global.DOMPurify || typeof global.DOMPurify.sanitize !== 'function') {
       throw new Error('HTML 정화 모듈을 사용할 수 없습니다.');
@@ -168,6 +237,13 @@
     }).join('\n');
     const container = sourceRoot.querySelector('.pptx-container');
     if (!container) throw new Error('변환 결과에서 슬라이드를 찾을 수 없습니다.');
+    // A pinned-engine chart fallback can close its container too early. Recover
+    // genuine later shells in document order, never shells inside slide content.
+    const recoverable = Array.from(sourceRoot.querySelectorAll('.slide-shell')).filter(function (shell) {
+      return !shell.parentElement?.closest('.slide, .slide-shell') &&
+        Array.from(shell.children).some(function (node) { return node.classList?.contains('slide'); });
+    });
+    recoverable.forEach(function (shell) { container.appendChild(shell); });
     const shells = Array.from(container.children).filter(function (node) {
       return node.classList && node.classList.contains('slide-shell');
     });
@@ -176,7 +252,12 @@
       const slide = Array.from(sourceShell.children).find(function (node) {
         return node.classList && node.classList.contains('slide');
       });
-      return { shell: sourceShell, slide: slide };
+      const shellNumber = sourceShell.getAttribute('data-slide');
+      const slideNumber = slide && slide.getAttribute('data-slide');
+      const number = Number(shellNumber || slideNumber);
+      const sourceNumber = Number.isSafeInteger(number) && number >= 1 && number <= 1000 &&
+        (!shellNumber || !slideNumber || Number(shellNumber) === Number(slideNumber)) ? number : null;
+      return { shell: sourceShell, slide: slide, sourceNumber: sourceNumber };
     }).filter(function (record) { return Boolean(record.slide); });
     const slideTargets = new Map();
     records.forEach(function (record, index) {
@@ -189,8 +270,10 @@
       });
       if (record.slide.id) slideTargets.set(record.slide.id, number);
     });
+    const sourceSlides = [];
     const slideMarkup = records.map(function (record, index) {
       const slide = record.slide;
+      addChartData(slide, record.sourceNumber, source.chartData);
       if (/data-timing-initial\s*=/i.test(slide.outerHTML)) status.timing = true;
       const sanitized = global.DOMPurify.sanitize(slide.outerHTML, {
         USE_PROFILES: { html: true, svg: true, svgFilters: true },
@@ -210,9 +293,16 @@
       cleanShell.className = 'slide-shell';
       cleanShell.dataset.slide = String(index + 1);
       cleanShell.appendChild(cleanSlide);
+      sourceSlides.push(record.sourceNumber);
       return cleanShell.outerHTML;
     }).filter(Boolean);
     if (!slideMarkup.length) throw new Error('안전하게 표시할 수 있는 슬라이드가 없습니다.');
+    if (source.slideCount !== undefined && (!Number.isInteger(source.slideCount) ||
+        source.slideCount < 1 || source.slideCount > 1000 || source.slideCount !== slideMarkup.length)) {
+      const failure = new Error('변환된 슬라이드 일부를 안전하게 내보내지 못했습니다.');
+      failure.code = 'SLIDE_COUNT_MISMATCH';
+      throw failure;
+    }
 
     if (status.timing) diagnostics.push({ code: 'STATIC_ANIMATION', message: '애니메이션은 정적 상태로 표시됩니다.', slideIndex: null });
     if (status.external) diagnostics.push({ code: 'EXTERNAL_RESOURCE_BLOCKED', message: '외부 리소스를 제거했습니다. 포함된 이미지와 미디어만 표시됩니다.', slideIndex: null });
@@ -239,7 +329,8 @@
       '<button id="ptv-print" type="button">인쇄</button></div></header>' +
       '<main id="ptv-main"><div class="pptx-container" id="ptv-slides">' + slideMarkup.join('') + '</div></main>' +
       '<script>' + viewerScript.replace(/<\//g, '<\\/') + '</script></body></html>';
-    return { html: out, diagnostics: diagnostics, slideCount: slideMarkup.length };
+    return { html: out, diagnostics: diagnostics, slideCount: slideMarkup.length,
+      sourceSlides: sourceSlides.every(Boolean) && new Set(sourceSlides).size === sourceSlides.length ? sourceSlides : null };
   }
 
   global.PptxExport = Object.freeze({ prepare: prepare });

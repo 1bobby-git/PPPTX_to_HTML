@@ -8,12 +8,13 @@ import browserify from 'browserify';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (path) => readFile(join(root, path), 'utf8');
 const enginePath = 'node_modules/@briank-dev/pptx-to-html/';
-const [shell, css, app, adapter, exporterTemplate, viewer, viewerCss, glueSource, wasm, purifierSource, engineLicense, purifierLicense, zipSource, zipLicense, normalizer] = await Promise.all([
+const [shell, css, app, adapter, exporterTemplate, viewer, viewerCss, glueSource, wasm, purifierSource, engineLicense, purifierLicense, zipSource, zipLicense, normalizer, conversionCore] = await Promise.all([
   read('src/shell.html'), read('src/styles.css'), read('src/app.js'), read('src/worker.js'),
   read('src/exporter.js'), read('src/viewer.js'), read('src/viewer.css'),
   read(enginePath + 'pptx2html_wasm.js'), readFile(join(root, enginePath, 'pptx2html_wasm_bg.wasm')),
   read('node_modules/dompurify/dist/purify.min.js'), read(enginePath + 'LICENSE'), read('node_modules/dompurify/LICENSE'),
-  read('node_modules/jszip/dist/jszip.min.js'), read('node_modules/jszip/LICENSE.markdown'), read('src/normalize-package.js')
+  read('node_modules/jszip/dist/jszip.min.js'), read('node_modules/jszip/LICENSE.markdown'), read('src/normalize-package.js'),
+  read('src/conversion-core.js')
 ]);
 
 // Bundle the password reader and all browser shims into the same offline worker.
@@ -25,7 +26,8 @@ cryptoBundler.on('package', (pkg) => {
 const cryptoSource = await new Promise((resolve, reject) => {
   cryptoBundler.bundle((error, buffer) => error ? reject(error) : resolve(buffer.toString('utf8')));
 });
-const cryptoLicenseBlocks = await Promise.all([...cryptoPackages.values()].sort((a, b) => a.name.localeCompare(b.name)).map(async (pkg) => {
+const cryptoLicenseBlocks = await Promise.all([...cryptoPackages.values()].sort((a, b) =>
+  a.name.localeCompare(b.name, 'en') || a.version.localeCompare(b.version, 'en')).map(async (pkg) => {
   const names = await readdir(pkg.__dirname);
   const licenses = names.filter((name) => /^(?:licen[cs]e|copying)(?:[._-]|$)/i.test(name));
   let texts = await Promise.all(licenses.map((name) => readFile(join(pkg.__dirname, name), 'utf8')));
@@ -53,7 +55,7 @@ const glue = glueSource
   .replace(/^export \{[^\n]+\};?$/gm, '')
   .replace("module_or_path = new URL('pptx2html_wasm_bg.wasm', import.meta.url);", "throw new Error('Embedded WASM bytes are required.');");
 if (/\bimport\.meta\b|^export\b/m.test(glue)) throw new Error('Unexpected upstream module format; review before bundling.');
-const worker = zipSource + '\n' + cryptoSource + '\n' + normalizer + '\n' +
+const worker = zipSource + '\n' + cryptoSource + '\n' + normalizer + '\n' + conversionCore + '\n' +
   '/* pptx2html-turbo v2.1.0 — MIT — Copyright (c) 2026 Brian Kim */\n' +
   glue + '\nconst EMBEDDED_WASM_BASE64 = ' + JSON.stringify(wasm.toString('base64')) + ';\n' + adapter;
 let exporter = replaceOnce(exporterTemplate, '/* VIEWER_CSS */ null', JSON.stringify(viewerCss));

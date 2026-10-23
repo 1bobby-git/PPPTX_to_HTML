@@ -7,7 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {Worker} = require('node:worker_threads');
 
-const VERSION = '1.4.0';
+const VERSION = require('../package.json').version;
 const MAX_INPUT = 64 * 1024 * 1024;
 const MAX_OUTPUT = 256 * 1024 * 1024;
 const HELP = `Usage: node tools/convert-pptx.cjs input.pptx [options]

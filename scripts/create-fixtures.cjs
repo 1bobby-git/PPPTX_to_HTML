@@ -10,7 +10,8 @@ const pptxgen = require('pptxgenjs');
 const JSZip = require('jszip');
 
 const outDir = path.resolve(__dirname, '../tests/fixtures');
-const pngData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==';
+// Valid 1x1 RGBA red pixel; all chunk CRCs and the zlib scanline are verified.
+const pngData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==';
 
 async function makeDeck() {
   const pptx = new pptxgen();

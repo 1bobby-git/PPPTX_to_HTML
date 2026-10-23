@@ -6,15 +6,24 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { chromium } = require('playwright');
+const { chromium, firefox, webkit } = require('playwright');
 const JSZip = require('jszip');
 
 const root = path.resolve(__dirname, '..');
 const index = path.join(root, 'index.html');
 const fixture = name => path.join(__dirname, 'fixtures', name);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const browserName = process.env.PPTX_TEST_BROWSER || 'chromium';
+const browserTypes = { chromium, firefox, webkit };
+assert.ok(Object.hasOwn(browserTypes, browserName), 'PPTX_TEST_BROWSER must be chromium, firefox, or webkit.');
+const browserType = browserTypes[browserName];
 
 function browserExecutable() {
+  if (browserName !== 'chromium') {
+    const explicit = process.env[browserName === 'firefox' ? 'FIREFOX_BIN' : 'WEBKIT_BIN'] ||
+      process.env['PLAYWRIGHT_' + browserName.toUpperCase() + '_EXECUTABLE_PATH'];
+    return [explicit, browserType.executablePath()].find(p => p && fs.existsSync(p));
+  }
   const explicit = process.env.CHROME_BIN || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
   const candidates = [explicit, chromium.executablePath(),
     '/tmp/pptx-browsers/chrome-linux64/chrome',
@@ -50,8 +59,11 @@ async function main() {
   await fixtureContract();
   assert.ok(fs.existsSync(index), 'build index.html before running browser tests');
   const executablePath = browserExecutable();
-  assert.ok(executablePath, 'Chromium is unavailable. Set CHROME_BIN to a compatible Chrome executable.');
-  const browser = await chromium.launch({ headless: true, executablePath, args: ['--no-sandbox'] });
+  assert.ok(executablePath, browserName === 'chromium'
+    ? 'Chromium is unavailable. Set CHROME_BIN to a compatible Chrome executable.'
+    : `${browserName} is unavailable. Install the Playwright browser or set PLAYWRIGHT_${browserName.toUpperCase()}_EXECUTABLE_PATH to a compatible executable.`);
+  const browser = await browserType.launch({ headless: true, executablePath,
+    ...(browserName === 'chromium' ? { args: ['--no-sandbox'] } : {}) });
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pptx-offline-test-'));
   const failedRequests = [];
   try {
@@ -243,7 +255,7 @@ async function main() {
     await page.setViewportSize({ width: 320, height: 700 });
     const narrowDimensions = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, viewport: innerWidth }));
     assert.ok(narrowDimensions.scroll <= narrowDimensions.viewport + 1, `320px horizontal overflow: ${JSON.stringify(narrowDimensions)}`);
-    console.log(`PASS file:// browser flow; browser=${executablePath}; screenshots=${tmp}`);
+    console.log(`PASS file:// browser flow; engine=${browserName}; browser=${executablePath}; screenshots=${tmp}`);
     await context.close();
   } finally {
     await browser.close();

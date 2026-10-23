@@ -3,6 +3,7 @@
 
   const MAX_BYTES = 64 * 1024 * 1024;
   const TIMEOUT_MS = 120000;
+  const SERVER_MODE = document.documentElement.dataset.conversionMode === 'server';
   const $ = (id) => document.getElementById(id);
   const ui = {
     input: $('file-input'), select: $('select-button'), change: $('change-button'),
@@ -14,12 +15,17 @@
     ready: $('result-ready'), subtitle: $('result-subtitle'), warnings: $('warnings'),
     warningCount: $('warning-count'), warningList: $('warning-list'),
     password: $('document-password'), protection: $('protection-options'),
-    diagnostics: $('diagnostics'), diagnosticsText: $('diagnostics-text')
+    diagnostics: $('diagnostics'), diagnosticsText: $('diagnostics-text'),
+    serviceStatus: $('service-status'), retryConnection: $('retry-connection'),
+    serviceBadge: $('service-badge'), privacyNote: $('privacy-note')
   };
 
   let selectedFile = null;
   let resultUrl = null;
   let worker = null;
+  let serverJob = null;
+  let serverReady = !SERVER_MODE;
+  let checkingServer = false;
   let deadline = null;
   let busy = false;
   let jobId = 0;
@@ -74,9 +80,10 @@
     ui.range.disabled = busy;
     ui.hidden.disabled = busy;
     ui.password.disabled = busy;
-    ui.convert.disabled = busy || !selectedFile;
+    ui.convert.disabled = busy || !selectedFile || !serverReady;
     ui.cancel.hidden = !busy;
     ui.drop.classList.toggle('is-busy', busy);
+    if (ui.retryConnection) ui.retryConnection.disabled = busy || checkingServer;
   }
 
   function stopWorker() {
@@ -87,6 +94,10 @@
     if (worker) {
       worker.terminate();
       worker = null;
+    }
+    if (serverJob) {
+      serverJob.abort();
+      serverJob = null;
     }
   }
 
@@ -158,6 +169,70 @@
     ui.warnings.hidden = false;
   }
 
+  function displayResult(blob, slideCount, diagnostics) {
+    clearResult();
+    resultUrl = URL.createObjectURL(blob);
+    ui.preview.src = resultUrl;
+    ui.preview.hidden = false;
+    ui.empty.hidden = true;
+    ui.download.disabled = false;
+    ui.open.disabled = false;
+    ui.ready.hidden = false;
+    const count = Number(slideCount);
+    ui.subtitle.textContent = Number.isFinite(count) && count >= 0 ? count + '개 슬라이드 변환 완료' : '변환 완료';
+    showWarnings(diagnostics);
+    finishJob('HTML 변환이 완료되었습니다. 미리보기를 확인하거나 파일을 저장하세요.', 'success');
+  }
+
+  function showError(message) {
+    finishJob('변환 실패: ' + (typeof message.message === 'string' ? message.message : '알 수 없는 오류'), 'error');
+    ui.status.dataset.errorCode = typeof message.code === 'string' ? message.code : 'CONVERSION_FAILED';
+    if (typeof message.details === 'string' && message.details) {
+      ui.diagnosticsText.textContent = message.details;
+      ui.diagnostics.hidden = false;
+    }
+    if (['PASSWORD_REQUIRED', 'INCORRECT_PASSWORD', 'DRM_PROTECTED', 'UNKNOWN_CONTAINER', 'INVALID_CONTAINER', 'LEGACY_PPT', 'UNSUPPORTED_ENCRYPTION', 'UNSUPPORTED_PACKAGE'].includes(message.code)) {
+      ui.protection.open = true;
+    }
+    if (message.code === 'PASSWORD_REQUIRED' || message.code === 'INCORRECT_PASSWORD') ui.password.focus();
+    if (SERVER_MODE && ['SERVER_UNAVAILABLE', 'FORBIDDEN'].includes(message.code)) {
+      serverReady = false;
+      ui.serviceStatus.textContent = message.code === 'FORBIDDEN' ?
+        '변환 서비스 연결 정보를 새로 확인해 주세요.' : '변환 서비스 연결이 끊겼습니다. 연결을 다시 확인해 주세요.';
+      ui.retryConnection.hidden = false;
+      refreshControls();
+    }
+  }
+
+  async function checkServer() {
+    if (!SERVER_MODE || checkingServer || busy) return;
+    checkingServer = true;
+    serverReady = false;
+    ui.serviceStatus.textContent = '변환 서비스에 연결하는 중입니다…';
+    refreshControls();
+    try {
+      if (!window.PptxServer || typeof window.PptxServer.check !== 'function') {
+        throw new Error('연결 모듈을 불러오지 못했습니다. 페이지를 새로 고쳐 주세요.');
+      }
+      const status = await window.PptxServer.check();
+      serverReady = true;
+      ui.retryConnection.hidden = true;
+      const local = status.mode === 'local';
+      ui.serviceStatus.textContent = (local ? '이 PC의 변환 서비스에 연결되었습니다.' : '변환 서버에 연결되었습니다.') +
+        (status.busy ? ' 다른 파일을 처리 중이므로 잠시 후 변환해 주세요.' : ' 파일을 선택해 변환하세요.');
+      ui.serviceBadge.textContent = local ? '이 PC에서 처리' : '서버에서 처리';
+      ui.privacyNote.textContent = local ?
+        '파일과 입력한 암호는 이 PC의 변환 서비스로 전달됩니다. 외부 변환 서버로 전송하지 않으며, 작업이 끝나면 임시 파일을 삭제합니다.' :
+        '파일과 입력한 암호는 이 사이트의 변환 서버로 전송됩니다. 변환 응답 또는 취소 처리가 끝나면 임시 파일을 삭제합니다.';
+    } catch (error) {
+      ui.serviceStatus.textContent = error && error.message ? error.message : '변환 서비스에 연결할 수 없습니다.';
+      ui.retryConnection.hidden = false;
+    } finally {
+      checkingServer = false;
+      refreshControls();
+    }
+  }
+
   function showResult(message) {
     if (typeof message.html !== 'string' || !message.html.trim()) {
       finishJob('변환 결과가 비어 있습니다. 다른 PPTX 파일로 다시 시도해 주세요.', 'error');
@@ -173,18 +248,7 @@
       if (!prepared || typeof prepared.html !== 'string' || !prepared.html.trim()) {
         throw new Error('결과 HTML이 비어 있습니다.');
       }
-      clearResult();
-      resultUrl = URL.createObjectURL(new Blob([prepared.html], { type: 'text/html;charset=utf-8' }));
-      ui.preview.src = resultUrl;
-      ui.preview.hidden = false;
-      ui.empty.hidden = true;
-      ui.download.disabled = false;
-      ui.open.disabled = false;
-      ui.ready.hidden = false;
-      const count = Number(prepared.slideCount);
-      ui.subtitle.textContent = Number.isFinite(count) && count >= 0 ? count + '개 슬라이드 변환 완료' : '변환 완료';
-      showWarnings(prepared.diagnostics);
-      finishJob('HTML 변환이 완료되었습니다. 미리보기를 확인하거나 파일을 저장하세요.', 'success');
+      displayResult(new Blob([prepared.html], { type: 'text/html;charset=utf-8' }), prepared.slideCount, prepared.diagnostics);
     } catch (error) {
       clearResult();
       finishJob('결과를 표시하지 못했습니다: ' + (error && error.message ? error.message : '알 수 없는 오류'), 'error');
@@ -193,6 +257,10 @@
 
   async function convert() {
     if (busy || !selectedFile) return;
+    if (SERVER_MODE && !serverReady) {
+      setStatus('변환 서비스 연결을 먼저 확인해 주세요.', 'error');
+      return;
+    }
     const fileError = validateFile(selectedFile);
     if (fileError) {
       setStatus(fileError, 'error');
@@ -205,7 +273,7 @@
       return;
     }
     const workerSource = $('engine-worker');
-    if (!workerSource || !workerSource.textContent.trim() || typeof Worker === 'undefined') {
+    if (!SERVER_MODE && (!workerSource || !workerSource.textContent.trim() || typeof Worker === 'undefined')) {
       setStatus('이 브라우저에서 로컬 변환 엔진을 사용할 수 없습니다.', 'error');
       return;
     }
@@ -222,14 +290,27 @@
     // Keep the password only in this conversion request, never in storage or output.
     ui.password.value = '';
     refreshControls();
-    setStatus('파일을 읽는 중입니다…', 'working');
+    setStatus(SERVER_MODE ? '변환 서비스에 요청하는 중입니다…' : '파일을 읽는 중입니다…', 'working');
     deadline = setTimeout(function () {
       if (id !== jobId || !busy) return;
       ++jobId;
-      finishJob('변환 시간이 2분을 초과해 중지했습니다. 파일 크기를 확인하고 다시 시도해 주세요.', 'error');
-    }, TIMEOUT_MS);
+      finishJob(SERVER_MODE ? '변환 서비스의 응답 시간이 초과되어 요청을 중지했습니다. 다시 시도해 주세요.' :
+        '변환 시간이 2분을 초과해 중지했습니다. 파일 크기를 확인하고 다시 시도해 주세요.', 'error');
+    }, SERVER_MODE ? window.PptxServer.timeoutMs : TIMEOUT_MS);
 
     try {
+      if (SERVER_MODE) {
+        serverJob = window.PptxServer.convert(file, options, function (message) {
+          if (id === jobId && busy) setStatus(message, 'working');
+        });
+        const result = await serverJob.promise;
+        if (id !== jobId || !busy) return;
+        // The native CLI already sanitizes and packages a complete HTML document.
+        // Passing it through the browser exporter again would lose its viewer.
+        serverJob = null;
+        displayResult(result.blob, result.slideCount, result.diagnostics);
+        return;
+      }
       const bytes = await file.arrayBuffer();
       if (id !== jobId || !busy) return;
       if (bytes.byteLength === 0 || bytes.byteLength > MAX_BYTES) {
@@ -250,16 +331,7 @@
         } else if (message.type === 'result') {
           showResult(message);
         } else if (message.type === 'error') {
-          finishJob('변환 실패: ' + (typeof message.message === 'string' ? message.message : '알 수 없는 오류'), 'error');
-          ui.status.dataset.errorCode = typeof message.code === 'string' ? message.code : 'CONVERSION_FAILED';
-          if (typeof message.details === 'string' && message.details) {
-            ui.diagnosticsText.textContent = message.details;
-            ui.diagnostics.hidden = false;
-          }
-          if (['PASSWORD_REQUIRED', 'INCORRECT_PASSWORD', 'DRM_PROTECTED', 'UNKNOWN_CONTAINER', 'INVALID_CONTAINER', 'LEGACY_PPT', 'UNSUPPORTED_ENCRYPTION', 'UNSUPPORTED_PACKAGE'].includes(message.code)) {
-            ui.protection.open = true;
-          }
-          if (message.code === 'PASSWORD_REQUIRED' || message.code === 'INCORRECT_PASSWORD') ui.password.focus();
+          showError(message);
         }
       };
       worker.onerror = function (event) {
@@ -272,7 +344,13 @@
       options.password = '';
     } catch (error) {
       if (id !== jobId || !busy) return;
+      if (SERVER_MODE) {
+        showError(error || {});
+        return;
+      }
       finishJob('파일을 읽거나 변환할 수 없습니다: ' + (error && error.message ? error.message : '알 수 없는 오류'), 'error');
+    } finally {
+      options.password = '';
     }
   }
 
@@ -281,6 +359,7 @@
   ui.input.addEventListener('change', function () { if (ui.input.files && ui.input.files[0]) selectFile(ui.input.files[0]); });
   ui.input.addEventListener('click', function () { if (!busy) ui.input.value = ''; });
   ui.convert.addEventListener('click', convert);
+  if (ui.retryConnection) ui.retryConnection.addEventListener('click', checkServer);
   ui.password.addEventListener('keydown', function (event) {
     if (event.key === 'Enter' && !busy) {
       event.preventDefault();
@@ -350,4 +429,5 @@
 
   clearResult();
   refreshControls();
+  if (SERVER_MODE) checkServer();
 })();

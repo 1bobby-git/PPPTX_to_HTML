@@ -1,17 +1,23 @@
 {
   "name": "ppptx-to-html",
-  "version": "1.4.0",
-  "description": "Offline PPTX to native HTML CLI without Office or a browser, plus a single-file browser app",
+  "version": "1.5.0",
+  "description": "Web UI backed by an offline native PPTX to HTML CLI, plus a standalone browser converter",
   "scripts": {
     "build": "node scripts/build.mjs",
     "pretest": "node scripts/create-fixtures.cjs",
     "test": "node tests/offline.cjs && node tests/protection.cjs",
+    "test:core": "node tests/conversion-core.cjs",
+    "test:charts": "node scripts/create-fixtures.cjs && node tests/chart-data.cjs",
+    "test:fidelity": "node tests/fidelity.cjs",
     "test:fixtures": "node scripts/create-fixtures.cjs",
     "test:protection": "node scripts/create-fixtures.cjs && node tests/protection.cjs",
     "convert": "node tools/convert-pptx.cjs",
     "check:native": "node tools/convert-pptx.cjs --check",
     "test:native": "node scripts/create-fixtures.cjs && node scripts/create-protected-fixtures.cjs && node tests/native-cli.cjs",
-    "package:native": "node scripts/package-native-cli.cjs"
+    "package:native": "node scripts/package-native-cli.cjs",
+    "start": "node tools/serve-web.cjs",
+    "start:web": "node tools/serve-web.cjs",
+    "test:web": "node scripts/create-fixtures.cjs && node scripts/create-protected-fixtures.cjs && node tests/web-service.cjs"
   },
   "repository": {
     "type": "git",
@@ -27,6 +33,7 @@
   "homepage": "https://github.com/1bobby-git/PPPTX_to_HTML#readme",
   "dependencies": {
     "@briank-dev/pptx-to-html": "2.1.0",
+    "busboy": "1.6.0",
     "cfb": "1.2.2",
     "dompurify": "3.4.17",
     "jsdom": "30.1.3",

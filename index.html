@@ -153,7 +153,7 @@
       <p class="privacy-note"><span aria-hidden="true">◈</span> 모든 변환은 이 브라우저에서 처리됩니다. PowerPoint 실행과 서버 업로드가 필요하지 않습니다.</p>
       <p class="fidelity-note">정적 HTML로 변환되므로 원본의 애니메이션과 슬라이드 전환은 재현되지 않습니다.</p>
     </main>
-    <footer>로컬 변환기 v1.2.0 · PowerPoint 없이 브라우저에서 실행</footer>
+    <footer>로컬 변환기 v1.5.0 · PowerPoint 없이 브라우저에서 실행</footer>
   </div>
   <script id="engine-worker" type="text/plain">
 /*!
@@ -40675,6 +40675,158 @@ module.exports = whichTypedArray;
 }).call(this);
 
 },{"./NodeType":244,"./Utility":245,"./WriterState":246,"./XMLDOMImplementation":253,"./XMLDocument":261,"./XMLDocumentCB":262,"./XMLStreamWriter":270,"./XMLStringWriter":271}],276:[function(require,module,exports){
+'use strict';
+
+// Read only cached chart values in the supplied, already local PPTX package.
+// JSZip is injected so the browser worker reuses its existing ZIP library.
+const {Parser} = require('xml2js');
+const C = 'http://schemas.openxmlformats.org/drawingml/2006/chart';
+const R = 'http://schemas.openxmlformats.org/package/2006/relationships';
+const LIMITS = Object.freeze({xmlBytes: 2 * 1024 * 1024, totalXmlBytes: 16 * 1024 * 1024,
+  charts: 100, rows: 100, series: 16, text: 256, metadataBytes: 1024 * 1024});
+function children(node, local, uri) {
+  return Object.values(node || {}).filter(Array.isArray).flat().filter(n => n && n.$ns?.local === local && (!uri || n.$ns.uri === uri));
+}
+function first(node, local, uri) { return children(node, local, uri)[0]; }
+function attr(node, name) { return node?.$?.[name]?.value; }
+function text(node) { return typeof node?._ === 'string' ? node._ : ''; }
+function short(value) { return String(value || '').slice(0, LIMITS.text); }
+function resolve(owner, target) {
+  if (typeof target !== 'string' || /[\\?#\x00-\x20]/.test(target) || /^[A-Za-z][\w+.-]*:|^\/\//.test(target)) return null;
+  const parts = target.startsWith('/') ? [] : owner.split('/').slice(0, -1);
+  for (const p of target.split('/')) {
+    if (!p || p === '.') continue;
+    if (p === '..') { if (!parts.length) return null; parts.pop(); }
+    else parts.push(p);
+  }
+  return parts.join('/');
+}
+function relsPath(owner) { const p = owner.split('/'); const base = p.pop(); return p.concat('_rels', base + '.rels').join('/'); }
+function cache(container) {
+  const multi = first(first(container, 'multiLvlStrRef', C), 'multiLvlStrCache', C);
+  if (multi) {
+    const levels = children(multi, 'lvl', C);
+    if (levels.length > LIMITS.series) throw new Error('large-cache');
+    const values = {}; let count = 0;
+    for (const level of levels) {
+      const wrapped = {cache: [{...level, $ns: {local: 'strLit', uri: C}}]};
+      const current = cache(wrapped);
+      count = Math.max(count, current.count);
+      for (const idx of Object.keys(current.values)) values[idx] = short([values[idx], current.values[idx]].filter(Boolean).join(' / '));
+    }
+    const declared = Number(attr(first(multi, 'ptCount', C), 'val'));
+    if (Number.isFinite(declared) && declared > LIMITS.rows) throw new Error('large-cache');
+    return {values, count};
+  }
+  const ref = first(container, 'strRef', C) || first(container, 'numRef', C);
+  const node = first(ref, 'strCache', C) || first(ref, 'numCache', C) || first(container, 'strLit', C) || first(container, 'numLit', C);
+  const points = children(node, 'pt', C);
+  if (!node || !points.length) return {values: {}, count: 0};
+  const declared = Number(attr(first(node, 'ptCount', C), 'val'));
+  if (points.length > LIMITS.rows || (Number.isFinite(declared) && declared > LIMITS.rows)) throw new Error('large-cache');
+  const values = {};
+  let count = Number.isSafeInteger(declared) && declared >= 0 ? declared : 0;
+  for (const point of points) {
+    const raw = attr(point, 'idx');
+    if (!/^\d+$/.test(raw || '')) throw new Error('invalid-cache');
+    const idx = Number(raw);
+    if (!Number.isSafeInteger(idx) || idx >= LIMITS.rows || Object.hasOwn(values, idx)) throw new Error('invalid-cache');
+    values[idx] = short(text(first(point, 'v', C)));
+    count = Math.max(count, idx + 1);
+  }
+  return {values, count};
+}
+function chartRows(root) {
+  const chart = first(root, 'chart', C), plot = first(chart, 'plotArea', C);
+  const series = Object.values(plot || {}).filter(Array.isArray).flat().flatMap(n => children(n, 'ser', C));
+  if (series.length > LIMITS.series) return {status: 'limit', columns: [], rows: []};
+  const columns = [], data = [];
+  let count = 0;
+  try {
+    for (let i = 0; i < series.length; i++) {
+      const s = series[i], tx = first(s, 'tx', C);
+      const title = text(first(tx, 'v', C)) || cache(tx).values[0] || '계열 ' + (i + 1);
+      const x = first(s, 'xVal', C), y = first(s, 'yVal', C);
+      if (x || y) {
+        for (const [name, container] of [[' X', x], [' Y', y]]) {
+          const values = cache(container); columns.push(short(title + name)); data.push(values.values); count = Math.max(count, values.count);
+        }
+      } else {
+        const category = cache(first(s, 'cat', C)), value = cache(first(s, 'val', C));
+        // Separate categories per series avoid assuming that different axes align.
+        columns.push(short(title + ' · 항목'), short(title + ' · 값'));
+        data.push(category.values, value.values); count = Math.max(count, category.count, value.count);
+      }
+    }
+  } catch (error) { return {status: error.message === 'large-cache' ? 'limit' : 'invalid', columns: [], rows: []}; }
+  if (!count) return {status: 'empty', columns: [], rows: []};
+  return {status: 'cached', columns, rows: Array.from({length: count}, (_, idx) => data.map(values => values[idx] ?? ''))};
+}
+async function inspect(bytes, JSZip, fallbacks, renderedHtml) {
+  const records = [];
+  if (Array.isArray(fallbacks) && fallbacks.length === 0) return records;
+  try {
+    if (!bytes || bytes.byteLength > 64 * 1024 * 1024) return records;
+    const zip = await JSZip.loadAsync(bytes);
+    let total = 0, metadata = 0;
+    async function xml(path) {
+      const entry = zip.file(path), size = entry?._data?.uncompressedSize;
+      if (!entry || !Number.isSafeInteger(size) || size > LIMITS.xmlBytes || (total += size) > LIMITS.totalXmlBytes) throw new Error('xml-limit');
+      const source = await entry.async('string');
+      if (/<!DOCTYPE|<!ENTITY/i.test(source) || source.includes('\0')) throw new Error('xml-invalid');
+      const parsed = await new Parser({xmlns: true, explicitArray: true, explicitRoot: false, strict: true}).parseStringPromise(source);
+      return parsed;
+    }
+    async function relations(owner) {
+      const root = await xml(relsPath(owner));
+      return children(root, 'Relationship', R);
+    }
+    const presentation = await xml('ppt/presentation.xml');
+    const presentationRels = await relations('ppt/presentation.xml');
+    const order = new Map();
+    const slideIds = children(first(presentation, 'sldIdLst', 'http://schemas.openxmlformats.org/presentationml/2006/main'), 'sldId', 'http://schemas.openxmlformats.org/presentationml/2006/main');
+    if (slideIds.length > 1000) return records;
+    for (let i = 0; i < slideIds.length; i++) {
+      const id = Object.values(slideIds[i].$ || {}).find(a => a.local === 'id' && a.uri === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships')?.value;
+      const matching = presentationRels.filter(r => attr(r, 'Id') === id && attr(r, 'Type') === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide' && !attr(r, 'TargetMode'));
+      if (matching.length !== 1) continue;
+      const part = resolve('ppt/presentation.xml', attr(matching[0], 'Target'));
+      if (part) order.set(part, order.has(part) ? null : i + 1);
+    }
+    const visible = typeof renderedHtml === 'string' ? new Set(Array.from(renderedHtml.matchAll(/<div class="slide"[^>]*\bdata-slide="(\d+)"/g), m => Number(m[1]))) : null;
+    // Diagnostics supply both the owner part and rId. Do not scan arbitrary media,
+    // notes, external workbooks or package filenames to guess chart identity.
+    const selected = Array.isArray(fallbacks) ? fallbacks.slice(0, LIMITS.charts) : null;
+    const slides = selected ? [...new Set(selected.map(f => f.part))].filter(p => /^ppt\/slides\/[^/]+\.xml$/.test(p)) :
+      Object.keys(zip.files).filter(p => /^ppt\/slides\/[^/]+\.xml$/.test(p)).slice(0, 1000);
+    for (const owner of slides) {
+      const slideNumber = order.get(owner);
+      if (!slideNumber || (visible && !visible.has(slideNumber))) continue;
+      let rels;
+      try { rels = await relations(owner); } catch { continue; }
+      for (const rel of rels) {
+        if (records.length >= LIMITS.charts) return records;
+        if (attr(rel, 'Type') !== 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart' ||
+            String(attr(rel, 'TargetMode') || '').toLowerCase() === 'external') continue;
+        const relationshipId = attr(rel, 'Id'), target = resolve(owner, attr(rel, 'Target'));
+        const matches = selected?.filter(f => f.part === owner && f.relationshipId === relationshipId);
+        if (selected && matches.length !== 1) continue;
+        if (!target || !relationshipId || relationshipId.length > 256 || rels.filter(r => attr(r, 'Id') === relationshipId).length !== 1) continue;
+        let result;
+        try { result = chartRows(await xml(target)); } catch { result = {status: 'invalid', columns: [], rows: []}; }
+        const record = {...(matches?.[0] || {}), part: owner, relationshipId, slideNumber, ...result};
+        const length = JSON.stringify(record).length * 3;
+        if ((metadata += length) > LIMITS.metadataBytes) return records;
+        records.push(record);
+      }
+    }
+  } catch { /* Optional data recovery must not fail conversion. */ }
+  return records;
+}
+
+module.exports = {inspect, LIMITS};
+
+},{"xml2js":242}],277:[function(require,module,exports){
 (function (Buffer){(function (){
 'use strict';
 
@@ -41012,10 +41164,308 @@ async function prepare(bytes, password) {
   }
 }
 
-module.exports = {prepare};
+module.exports = {prepare, inspectChartData: require('./chart-data.js').inspect,
+  resolveThemes: require('./theme-resolver.js').resolveThemes};
 
 }).call(this)}).call(this,require("buffer").Buffer)
-},{"buffer":51,"cfb":60,"crypto":70,"officecrypto-tool/src/crypto/ecma376_agile":159,"officecrypto-tool/src/crypto/ecma376_standard":160,"xml2js":242}]},{},[276])(276)
+},{"./chart-data.js":276,"./theme-resolver.js":278,"buffer":51,"cfb":60,"crypto":70,"officecrypto-tool/src/crypto/ecma376_agile":159,"officecrypto-tool/src/crypto/ecma376_standard":160,"xml2js":242}],278:[function(require,module,exports){
+'use strict';
+// Resolve only unambiguous multi-master theme references. Edits are source spans:
+// XML child order, unknown nodes, comments, and all untouched parts stay intact.
+const {Parser} = require('xml2js');
+const A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+const P = 'http://schemas.openxmlformats.org/presentationml/2006/main';
+const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const REL = 'http://schemas.openxmlformats.org/package/2006/relationships';
+const COLOR_KEYS = ['accent1','accent2','accent3','accent4','accent5','accent6','bg1','bg2','folHlink','hlink','tx1','tx2'];
+const COLORS = new Set(['dk1','lt1','dk2','lt2','accent1','accent2','accent3','accent4','accent5','accent6','hlink','folHlink']);
+const MAX_XML = 4 * 1024 * 1024;
+const MAX_INPUT = 64 * 1024 * 1024;
+const MAX_METADATA_BYTES = 16 * 1024 * 1024;
+const MAX_NODES = 50000;
+function limitError() {const error=new Error('Theme metadata limit'); error.code='THEME_LIMIT'; return error;}
+
+function parse(source, budget = {nodes:0}) {
+  if (source.length > MAX_XML || /<!DOCTYPE/i.test(source)) throw new Error('Unsupported theme XML');
+  // Reuse the namespace-aware SAX parser already shipped with xml2js 0.6.2.
+  const parser = new Parser({xmlns: true, strict: true}).saxParser;
+  const nodes = [], stack = [];
+  parser.onopentag = tag => {
+    if (++budget.nodes > MAX_NODES) throw limitError();
+    const node = {name: tag.name, local: tag.local, uri: tag.uri, attrs: tag.attributes, namespaces: Object.assign({}, ...(() => {const list=[]; for (const prefix in tag.ns) list.push({[prefix]:tag.ns[prefix]}); return list;})()),
+      start: parser.startTagPosition - 1, openEnd: parser.position, children: [], parent: stack[stack.length-1]};
+    if (node.parent) node.parent.children.push(node);
+    nodes.push(node); stack.push(node);
+  };
+  parser.onclosetag = () => {const node = stack.pop(); node.end = parser.position;};
+  parser.ontext = parser.oncdata = parser.onend = () => {};
+  parser.onerror = error => {throw error;};
+  parser.write(source).close();
+  return {source, nodes};
+}
+function attr(node, name, uri = '') {
+  return Object.values(node.attrs).find(value => value.local === name && value.uri === uri)?.value;
+}
+function descendants(doc, uri, local) {return doc.nodes.filter(node => node.uri === uri && node.local === local);}
+function child(node, uri, local) {return node?.children.find(value => value.uri === uri && value.local === local);}
+function resolvePath(owner, target) {
+  if (!target || /[?#\\]/.test(target) || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(target) || target.startsWith('//')) return null;
+  const parts = target.startsWith('/') ? [] : owner.split('/').slice(0,-1);
+  for (const part of target.split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') {if (!parts.length) return null; parts.pop();} else parts.push(part);
+  }
+  return parts.join('/');
+}
+function escapeXml(value) {return value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
+function attributeEdit(doc, node, name, value) {
+  const open = doc.source.slice(node.start,node.openEnd);
+  const re = /([^\s=<>/]+)\s*=\s*(['"])([\s\S]*?)\2/g;
+  for (const match of open.matchAll(re)) {
+    if (match[1] !== name) continue;
+    const valueOffset = match.index + match[0].indexOf(match[2]) + 1;
+    return {start: node.start + valueOffset, end: node.start + valueOffset + match[3].length, value: escapeXml(value)};
+  }
+  throw new Error('Missing theme attribute span');
+}
+function apply(source, edits) {
+  let output = source, lastStart = source.length;
+  for (const edit of edits.sort((a,b) => b.start-a.start)) {
+    if (edit.end > lastStart || edit.start < 0) throw new Error('Overlapping theme edits');
+    output = output.slice(0,edit.start) + edit.value + output.slice(edit.end);
+    lastStart = edit.start;
+  }
+  return output;
+}
+function themeValues(doc) {
+  const elements = descendants(doc,A,'themeElements')[0];
+  const scheme = child(elements,A,'clrScheme'), fontScheme = child(elements,A,'fontScheme');
+  const colors = {}, fonts = {};
+  for (const entry of scheme?.children || []) {
+    if (entry.uri !== A || !COLORS.has(entry.local)) continue;
+    const rgb = child(entry,A,'srgbClr'), value = rgb && attr(rgb,'val');
+    if (rgb && !rgb.children.length && /^[0-9A-Fa-f]{6}$/.test(value || '')) colors[entry.local] = value;
+  }
+  for (const [kind, prefix] of [['majorFont','mj'],['minorFont','mn']]) {
+    const list = child(fontScheme,A,kind);
+    for (const [name,suffix] of [['latin','lt'],['ea','ea'],['cs','cs']]) {
+      const value = attr(child(list,A,name) || {attrs:{}},'typeface');
+      // Empty EA defaults require script/language-aware selection; do not guess.
+      if (value && value.length <= 200 && !/^[+]/.test(value)) fonts['+'+prefix+'-'+suffix] = value;
+    }
+  }
+  return {colors,fonts};
+}
+function editsFor(doc, theme, colorMap, state, skipMasterStyles = false) {
+  const edits = [];
+  for (const node of doc.nodes) {
+    if (node.uri !== A) continue;
+    let ancestor=node.parent, inMasterStyle=false;
+    while (ancestor) {if (ancestor.uri===P && ancestor.local==='txStyles') inMasterStyle=true; ancestor=ancestor.parent;}
+    if (skipMasterStyles && inMasterStyle) continue;
+    if (node.local === 'schemeClr') {
+      const token = attr(node,'val'), key = colorMap[token] || token, value = theme.colors[key];
+      if (!value) {state.partial = true; continue;}
+      edits.push(attributeEdit(doc,node,'val',value));
+      const prefix = node.name.includes(':') ? node.name.split(':')[0]+':' : '';
+      edits.push({start:node.start+1,end:node.start+1+node.name.length,value:prefix+'srgbClr'});
+      const open = doc.source.slice(node.start,node.openEnd);
+      if (!/\/\s*>$/.test(open)) {
+        const closeAt = doc.source.lastIndexOf('</',node.end-1);
+        if (closeAt < node.openEnd) throw new Error('Missing scheme color closing span');
+        edits.push({start:closeAt+2,end:closeAt+2+node.name.length,value:prefix+'srgbClr'});
+      }
+    } else if (['latin','ea','cs'].includes(node.local)) {
+      const token = attr(node,'typeface');
+      if (!token || !/^\+(?:mj|mn)-(?:lt|ea|cs)$/.test(token)) continue;
+      if (!theme.fonts[token]) {state.partial = true; continue;}
+      edits.push(attributeEdit(doc,node,'typeface',theme.fonts[token]));
+    }
+  }
+  return edits;
+}
+
+function placeholder(shape) {return child(child(child(shape,P,'nvSpPr'),P,'nvPr'),P,'ph');}
+function placeholderShapes(doc) {return descendants(doc,P,'sp').filter(shape=>placeholder(shape));}
+function matchingPlaceholder(doc, ph) {
+  const idx=attr(ph,'idx'), type=attr(ph,'type');
+  return placeholderShapes(doc).filter(shape=>{
+    const candidate=placeholder(shape);
+    return idx !== undefined ? attr(candidate,'idx')===idx : attr(candidate,'type')===type;
+  });
+}
+function hasLocalTextStyle(shape) {
+  if (child(shape,P,'style')?.children.length) return true;
+  const body=child(shape,P,'txBody');
+  if (!body) return false;
+  const list=child(body,A,'lstStyle');
+  if (list?.children.length) return true;
+  for (const para of body.children.filter(node=>node.uri===A && node.local==='p')) {
+    const props=child(para,A,'pPr');
+    if (props && (props.children.length || Object.values(props.attrs).some(value=>value.uri==='' && value.local!=='lvl'))) return true;
+    for (const node of para.children.filter(value=>value.uri===A && ['r','endParaRPr'].includes(value.local))) {
+      const props=node.local==='r' ? child(node,A,'rPr') : node;
+      if (props && (props.children.length || Object.values(props.attrs).some(value=>value.uri==='' && !['lang','dirty'].includes(value.local)))) return true;
+    }
+  }
+  return false;
+}
+function inheritedStyleEdits(slideDoc,layoutDoc,masterDoc,theme,colorMap,state,budget) {
+  const edits=[];
+  for (const shape of placeholderShapes(slideDoc)) {
+    const ph=placeholder(shape), type=attr(ph,'type');
+    const body=child(shape,P,'txBody'), list=child(body,A,'lstStyle');
+    if (!body) continue;
+    const listAttributes=list ? Object.values(list.attrs).filter(value=>value.uri!=='http://www.w3.org/2000/xmlns/') : [];
+    const layouts=matchingPlaceholder(layoutDoc,ph), masters=matchingPlaceholder(masterDoc,ph);
+    if (child(shape,P,'style')?.children.length || !['body','title','ctrTitle'].includes(type) || !list || list.children.length || listAttributes.length ||
+        layouts.length>1 || masters.length>1 || [...layouts,...masters].some(hasLocalTextStyle)) {state.partial=true;continue;}
+    const styles=descendants(masterDoc,P,'txStyles')[0];
+    const sourceStyle=child(styles,P,type==='body' ? 'bodyStyle' : 'titleStyle');
+    if (!sourceStyle || !sourceStyle.children.length) {state.partial=true;continue;}
+    // Copy the complete paragraph defaults: this engine replaces defRPr as a unit,
+    // so copying only color/font would discard inherited size and other defaults.
+    const closeAt=masterDoc.source.lastIndexOf('</',sourceStyle.end-1);
+    let prefix='ptctheme';
+    while (sourceStyle.namespaces[prefix]) prefix+='x';
+    const declarations=Object.entries(sourceStyle.namespaces).filter(([name])=>name!=='xml' && name!=='xmlns').map(([name,uri])=>
+      ' xmlns'+(name ? ':'+name : '')+'="'+escapeXml(uri)+'"').join('');
+    const snippet='<'+prefix+':lstStyle xmlns:'+prefix+'="'+A+'"'+declarations+'>'+masterDoc.source.slice(sourceStyle.openEnd,closeAt)+'</'+prefix+':lstStyle>';
+    // Include generated defaults as well as source XML in the shared metadata
+    // budget. Three bytes per UTF-16 code unit conservatively bounds UTF-8.
+    budget.bytes+=snippet.length*3;
+    if (budget.bytes>MAX_METADATA_BYTES) {state.limit=true;throw limitError();}
+    let copied;
+    try {copied=parse(snippet,budget);} catch(error) {if(error.code==='THEME_LIMIT') state.limit=true;throw error;}
+    const copyState={partial:false}, copiedEdits=editsFor(copied,theme,colorMap,copyState);
+    if (copyState.partial) {state.partial=true;continue;}
+    const resolved=apply(snippet,copiedEdits);
+    edits.push({start:list.start,end:list.end,value:resolved});
+  }
+  return edits;
+}
+
+async function resolveThemes(bytes, JSZip) {
+  const unchanged = () => ({bytes,diagnostics:[]});
+  if (!(bytes instanceof Uint8Array) || !bytes.length || bytes.length > MAX_INPUT) throw new Error('Invalid theme input size');
+  if (!JSZip || typeof JSZip.loadAsync!=='function') throw new Error('JSZip must be supplied');
+  const zip = await JSZip.loadAsync(bytes);
+  if (Object.keys(zip.files).filter(name=>/^ppt\/theme\/[^/]+\.xml$/.test(name)).length<2) return unchanged();
+  const cache = new Map(), state = {partial:false}, budget={nodes:0,bytes:0};
+  function unresolved() {return {bytes,diagnostics:[{code:'THEME_INHERITANCE_UNRESOLVED',message:'복수 테마의 일부 연결·색상·글꼴 상속은 확실하게 해석하지 못해 원본을 유지했습니다.'}]};}
+  async function read(name) {
+    if (cache.has(name)) return cache.get(name);
+    const entry = zip.file(name);
+    if (!entry) throw new Error('Unavailable theme part');
+    if (!Number.isSafeInteger(entry._data?.uncompressedSize) || entry._data.uncompressedSize>MAX_XML) {state.limit=true;throw limitError();}
+    budget.bytes+=entry._data.uncompressedSize;
+    if (budget.bytes>MAX_METADATA_BYTES) {state.limit=true;throw limitError();}
+    const source=await entry.async('string');
+    let doc;
+    try {doc=parse(source,budget);} catch(error) {if(error.code==='THEME_LIMIT') state.limit=true;throw error;}
+    cache.set(name,doc); return doc;
+  }
+  async function relationships(owner) {
+    const pieces=owner.split('/'), filename=pieces.pop();
+    const name = pieces.concat('_rels',filename+'.rels').join('/');
+    const doc = await read(name);
+    return descendants(doc,REL,'Relationship').map(node => ({id:attr(node,'Id'),type:attr(node,'Type'),
+      target: attr(node,'TargetMode')?.toLowerCase() === 'external' ? null : resolvePath(owner,attr(node,'Target'))}));
+  }
+  function one(rels, suffix) {
+    const values=rels.filter(rel => rel.type?.endsWith('/'+suffix));
+    if (values.length !== 1 || !values[0].target) throw new Error('Ambiguous theme relationship');
+    return values[0].target;
+  }
+  const chains=[], failedParts=new Set();
+  try {
+    const pres = await read('ppt/presentation.xml'), presRels = await relationships('ppt/presentation.xml');
+    const slidePaths = descendants(pres,P,'sldId').map(node => {
+      const id=attr(node,'id',R); const matches=presRels.filter(rel=>rel.id===id && rel.type?.endsWith('/slide'));
+      return matches.length===1 ? matches[0].target : null;
+    });
+    if (slidePaths.length > 1000) throw new Error('Theme slide limit');
+    for (const slidePath of slidePaths) {
+      if (!slidePath) {state.partial=true;continue;}
+      const currentParts=[slidePath];
+      try {
+        const slideRels=await relationships(slidePath), layoutPath=one(slideRels,'slideLayout');
+        currentParts.push(layoutPath);
+        const layoutRels=await relationships(layoutPath), masterPath=one(layoutRels,'slideMaster');
+        currentParts.push(masterPath);
+        const masterRels=await relationships(masterPath), themePath=one(masterRels,'theme');
+        const parts=[slidePath,layoutPath,masterPath], docs=[];
+        for (const part of parts) docs.push(await read(part));
+        const mapNode=descendants(docs[2],P,'clrMap')[0], colorMap={};
+        let safe=!!mapNode;
+        for (const key of COLOR_KEYS) {
+          colorMap[key]=mapNode && attr(mapNode,key);
+          if (!COLORS.has(colorMap[key])) safe=false;
+        }
+        // Shared ancestors cannot be flattened correctly for per-slide overrides.
+        if (docs.some(doc=>descendants(doc,A,'overrideClrMapping').length) ||
+            [slideRels,layoutRels,masterRels].some(list=>list.some(rel=>rel.type?.endsWith('/themeOverride')))) safe=false;
+        if ([slideRels,layoutRels,masterRels].some(list=>list.some(rel=>/\/(?:chart|diagramData|diagramDrawing)$/.test(rel.type || '')))) state.partial=true;
+        chains.push({parts,themePath,colorMap,safe});
+      } catch {state.partial=true;currentParts.forEach(part=>failedParts.add(part));}
+    }
+  } catch {state.partial=true;}
+  if (state.limit) return unresolved();
+  // Single-theme packages retain byte identity and existing renderer behavior.
+  if (new Set(chains.map(chain=>chain.themePath)).size < 2) {
+    if (state.partial && Object.keys(zip.files).filter(name=>/^ppt\/theme\/[^/]+\.xml$/.test(name)).length>1) return {bytes,diagnostics:[{code:'THEME_INHERITANCE_UNRESOLVED',message:'복수 테마의 연결 또는 상속을 확실하게 해석하지 못했습니다. 원본과 비교해 주세요.'}]};
+    return unchanged();
+  }
+  const blocked=new Set(failedParts), contexts=new Map();
+  for (const chain of chains) {
+    const signature=JSON.stringify([chain.themePath,chain.colorMap]);
+    for (const part of chain.parts) {
+      if (!chain.safe || (contexts.has(part) && contexts.get(part)!==signature)) blocked.add(part);
+      contexts.set(part,signature);
+    }
+  }
+  // A rejected slide may share an ancestor with another slide. Keep its complete
+  // connected chain untouched so baking a parent cannot change override semantics.
+  let expanded=true;
+  while (expanded) {
+    expanded=false;
+    for (const chain of chains) if (chain.parts.some(part=>blocked.has(part))) {
+      for (const part of chain.parts) if (!blocked.has(part)) {blocked.add(part);expanded=true;}
+    }
+  }
+  const changes=new Map(), visited=new Set();
+  for (const chain of chains) {
+    if (chain.parts.some(part=>blocked.has(part))) {state.partial=true;continue;}
+    try {
+      const values=themeValues(await read(chain.themePath)), proposed=new Map();
+      for (const part of chain.parts) {
+        if (visited.has(part)) continue;
+        const doc=await read(part), edits=editsFor(doc,values,chain.colorMap,state,part===chain.parts[2]);
+        if (part===chain.parts[0]) edits.push(...inheritedStyleEdits(doc,await read(chain.parts[1]),await read(chain.parts[2]),values,chain.colorMap,state,budget));
+        if (edits.length) proposed.set(part,apply(doc.source,edits));
+      }
+      for (const [part,source] of proposed) changes.set(part,source);
+      chain.parts.forEach(part=>visited.add(part));
+    } catch {state.partial=true;chain.parts.forEach(part=>blocked.add(part));}
+  }
+  if (state.limit) return unresolved();
+  expanded=true;
+  while (expanded) {
+    expanded=false;
+    for (const chain of chains) if (chain.parts.some(part=>blocked.has(part))) {
+      for (const part of chain.parts) if (!blocked.has(part)) {blocked.add(part);expanded=true;}
+    }
+  }
+  for (const part of blocked) changes.delete(part);
+  if (!changes.size) return {bytes,diagnostics:[{code:'THEME_INHERITANCE_UNRESOLVED',message:'복수 테마의 일부 색상·글꼴 상속을 확실하게 해석하지 못했습니다. 원본과 비교해 주세요.'}]};
+  for (const [name,source] of changes) zip.file(name,source,{createFolders:false});
+  const output = await zip.generateAsync({type:'uint8array',compression:'DEFLATE',compressionOptions:{level:6}});
+  if (output.byteLength > MAX_INPUT) throw new Error('Resolved PPTX exceeds 64 MiB');
+  return {bytes:output,diagnostics:state.partial ? [{code:'THEME_INHERITANCE_UNRESOLVED',message:'복수 테마의 일부 색상·글꼴 또는 차트·다이어그램은 원본과 다를 수 있습니다.'}] : []};
+}
+module.exports = {resolveThemes};
+
+},{"xml2js":242}]},{},[277])(277)
 });
 
 /* Normalize valid OPC absolute relationship targets for the PPTX converter. */
@@ -41161,6 +41611,147 @@ async function normalizePptxPackage(bytes) {
   }
   return output;
 }
+
+/* Shared browser/Node contract for the pinned PPTX engine. No DOM or I/O. */
+(function (global) {
+  'use strict';
+  const MAX_OUTPUT_BYTES = 256 * 1024 * 1024;
+  function failure(code, message) { const error = new Error(message); error.code = code; return error; }
+  function selectedSlides(value, total) {
+    const text = value == null ? '' : String(value);
+    if (!text.trim()) return new Uint32Array();
+    const selected = new Set();
+    for (const part of text.split(',')) {
+      const match = /^\s*(\d+)(?:\s*-\s*(\d+))?\s*$/.exec(part);
+      if (!match) throw failure('INVALID_ARGUMENT', '슬라이드 범위는 1,3-5 형식으로 입력해 주세요.');
+      const first = Number(match[1]);
+      const last = match[2] ? Number(match[2]) : first;
+      if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 1 || last < first || last > total) {
+        throw failure('INVALID_ARGUMENT', '슬라이드 번호는 1부터 ' + total + ' 사이에서 지정해 주세요.');
+      }
+      for (let index = first; index <= last; index += 1) selected.add(index);
+    }
+    return new Uint32Array([...selected].sort((a, b) => a - b));
+  }
+
+  function summarizeDiagnostics(json) {
+    let items;
+    try { items = JSON.parse(json || '[]'); } catch { return []; }
+    if (!Array.isArray(items)) return [];
+    const grouped = new Map();
+    const names = {
+      CHART: '일부 차트의 모양이나 데이터 표현이 원본과 다를 수 있습니다.',
+      TABLE: '일부 표 스타일은 원본과 다르게 표시될 수 있습니다.',
+      SMARTART: '일부 SmartArt는 미리보기 이미지 또는 대체 표시로 변환되었습니다.',
+      DIAGRAM: '일부 다이어그램은 미리보기 이미지 또는 대체 표시로 변환되었습니다.',
+      OLE: '삽입된 개체는 실행되지 않으며 미리보기 또는 대체 표시로 변환됩니다.',
+      MATH: '일부 수식은 대체 표시로 변환되었습니다.',
+      MEDIA: '일부 오디오·동영상은 브라우저에서 재생할 수 없습니다.',
+      TIMING: '애니메이션과 전환 효과는 정적인 슬라이드로 저장됩니다.',
+      IMAGE: '일부 이미지 형식 또는 외부 이미지를 표시하지 못할 수 있습니다.',
+      DRAWINGML: '일부 도형·효과는 원본과 다르게 표시될 수 있습니다.',
+      ACTION: '일부 슬라이드 동작 또는 링크는 변환되지 않습니다.',
+      FONT: '일부 글꼴은 이 기기에 설치된 대체 글꼴로 표시될 수 있습니다.'
+    };
+    for (const item of items) {
+      if (!item || typeof item !== 'object') continue;
+      const code = String(item.code || 'CONVERSION_NOTICE');
+      const part = String(item.location?.part_name || '');
+      const isDrawingControl = /^(?:[^:]+:)?(?:chOff|chExt|masterClrMapping)$/.test(String(item.location?.qualified_element_name || ''));
+      // Notes and package inventories are not rendering failures. Never copy their raw text.
+      if (/NOTE|COMMENT|AUTHOR/.test(code) || /(?:notes|comments|Authors)/i.test(part)) continue;
+      if (code === 'OOXML_PART_UNSUPPORTED' && (part.endsWith('/') || !/\/(slides|charts|diagrams)\//.test(part))) continue;
+      if (code === 'OOXML_ELEMENT_UNSUPPORTED' && !isDrawingControl && !/\/(slides|charts|diagrams)\//.test(part)) continue;
+      const family = isDrawingControl ? 'DRAWINGML' : Object.keys(names).find((name) => code.includes(name)) || 'OTHER';
+      if (!grouped.has(family)) grouped.set(family, {
+        code: family === 'OTHER' ? 'UNSUPPORTED_FEATURES' : code,
+        message: names[family] || '일부 PPTX 기능이 완전히 재현되지 않았습니다. 미리보기를 원본과 비교해 주세요.',
+        slides: new Set()
+      });
+    }
+    return [...grouped.values()].map(({code, message, slides}) => ({
+      code,
+      // The pinned engine reports part indices here, which can differ from
+      // presentation order. Do not present them as user-visible slide numbers.
+      message
+    }));
+  }
+
+
+  // Count UTF-8 without allocating a second full-sized output buffer.
+  function utf8Length(value, limit) {
+    let bytes = 0;
+    for (let i = 0; i < value.length; i++) {
+      const code = value.charCodeAt(i);
+      if (code < 0x80) bytes++;
+      else if (code < 0x800) bytes += 2;
+      else if (code >= 0xd800 && code <= 0xdbff && i + 1 < value.length &&
+          value.charCodeAt(i + 1) >= 0xdc00 && value.charCodeAt(i + 1) <= 0xdfff) { bytes += 4; i++; }
+      else bytes += 3;
+      if (bytes > limit) return bytes;
+    }
+    return bytes;
+  }
+
+  function chartFallbacks(json) {
+    let items;
+    try { items = JSON.parse(json || '[]'); } catch { return []; }
+    if (!Array.isArray(items)) return [];
+    const records = [];
+    for (const item of items) {
+      if (records.length >= 100) break;
+      if (!['DRAWINGML_CHART_FALLBACK', 'CHART_STRUCTURE_UNSUPPORTED'].includes(item?.code) ||
+          item.support_tier !== 'fallback' || item.stage !== 'rendered') continue;
+      const loc = item.location;
+      if (!loc || !/^ppt\/slides\/[^/]{1,200}\.xml$/.test(loc.part_name) ||
+          typeof loc.relationship_id !== 'string' || !loc.relationship_id.length || loc.relationship_id.length > 256 ||
+          !Number.isInteger(loc.slide_index) || loc.slide_index < 0 || loc.slide_index >= 1000) continue;
+      const rect = {x: loc.position?.x, y: loc.position?.y, width: loc.size?.width, height: loc.size?.height};
+      if (!Object.values(rect).every(n => Number.isFinite(n) && Math.abs(n) <= 30000 * 9525) || rect.width <= 0 || rect.height <= 0) continue;
+      records.push({part: loc.part_name, relationshipId: loc.relationship_id, slideNumber: loc.slide_index + 1, rect});
+    }
+    return records;
+  }
+
+  function render(engine, data, options) {
+    const settings = options || {};
+    let info, converted;
+    try {
+      info = engine.get_presentation_info(data);
+      const width = info.widthPx, height = info.heightPx, total = info.slideCount;
+      if (!Number.isInteger(total) || total < 1 || total > 1000) {
+        throw failure('SLIDE_LIMIT', '슬라이드 수는 1장 이상 1,000장 이하여야 합니다.');
+      }
+      if (![width, height].every(value => Number.isFinite(value) && value > 0 && value <= 30000)) {
+        throw failure('INVALID_DIMENSIONS', '지원하지 않는 슬라이드 크기입니다.');
+      }
+      const range = selectedSlides(settings.slideRange, total);
+      // Empty ranges select only visible slides in the pinned engine.
+      const effectiveRange = settings.includeHidden && !range.length
+        ? Uint32Array.from({ length: total }, (_, index) => index + 1) : range;
+      if (typeof settings.onProgress === 'function') settings.onProgress('텍스트·이미지·도형을 HTML로 변환하는 중입니다…');
+      converted = engine.convert_with_options_metadata(data, true, !!settings.includeHidden, effectiveRange, 1);
+      const slideCount = converted.slideCount;
+      if (slideCount === 0) throw failure('EMPTY_SELECTION', '선택한 범위에 표시할 슬라이드가 없습니다. 숨긴 슬라이드 포함 설정을 확인해 주세요.');
+      if (!Number.isInteger(slideCount) || slideCount < 1 || slideCount > total ||
+          (effectiveRange.length && slideCount > effectiveRange.length)) {
+        throw failure('SLIDE_COUNT_MISMATCH', '변환 결과의 슬라이드 수가 올바르지 않습니다.');
+      }
+      const html = converted.html;
+      if (typeof html !== 'string' || !html.length) throw failure('EMPTY_OUTPUT', '변환된 HTML이 비어 있습니다.');
+      if (html.length > MAX_OUTPUT_BYTES || utf8Length(html, MAX_OUTPUT_BYTES) > MAX_OUTPUT_BYTES) throw failure('OUTPUT_LIMIT', 'HTML 출력이 256 MiB를 초과합니다.');
+      if (!html.trim()) throw failure('EMPTY_OUTPUT', '변환된 HTML이 비어 있습니다.');
+      return { html, width, height, slideCount, diagnostics: summarizeDiagnostics(converted.diagnosticsJson),
+        chartFallbacks: chartFallbacks(converted.diagnosticsJson) };
+    } finally {
+      // Always free metadata as well, even if releasing a result throws.
+      try { if (converted) converted.free(); } finally { if (info) info.free(); }
+    }
+  }
+  const api = Object.freeze({ render, selectedSlides, summarizeDiagnostics });
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else global.PptxCore = api;
+})(typeof globalThis !== 'undefined' ? globalThis : self);
 
 /* pptx2html-turbo v2.1.0 — MIT — Copyright (c) 2026 Brian Kim */
 /* @ts-self-types="./pptx2html_wasm.d.ts" */
@@ -41727,64 +42318,6 @@ const EMBEDDED_WASM_BASE64 = "AGFzbQEAAAAB8wRKYAJ/fwBgAX8AYAJ/fwF/YAN/f38AYAR/f3
 
 const MAX_INPUT_BYTES = 64 * 1024 * 1024;
 
-function selectedSlides(value, total) {
-  if (!String(value || '').trim()) return new Uint32Array();
-  const selected = new Set();
-  for (const part of String(value).split(',')) {
-    const match = /^\s*(\d+)(?:\s*-\s*(\d+))?\s*$/.exec(part);
-    if (!match) throw new Error('슬라이드 범위는 1,3-5 형식으로 입력해 주세요.');
-    const first = Number(match[1]);
-    const last = match[2] ? Number(match[2]) : first;
-    if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 1 || last < first || last > total) {
-      throw new Error('슬라이드 번호는 1부터 ' + total + ' 사이에서 지정해 주세요.');
-    }
-    for (let index = first; index <= last; index += 1) selected.add(index);
-  }
-  return new Uint32Array([...selected].sort((a, b) => a - b));
-}
-
-function summarizeDiagnostics(json) {
-  let items;
-  try { items = JSON.parse(json || '[]'); } catch { return []; }
-  if (!Array.isArray(items)) return [];
-  const grouped = new Map();
-  const names = {
-    CHART: '일부 차트의 모양이나 데이터 표현이 원본과 다를 수 있습니다.',
-    TABLE: '일부 표 스타일은 원본과 다르게 표시될 수 있습니다.',
-    SMARTART: '일부 SmartArt는 미리보기 이미지 또는 대체 표시로 변환되었습니다.',
-    DIAGRAM: '일부 다이어그램은 미리보기 이미지 또는 대체 표시로 변환되었습니다.',
-    OLE: '삽입된 개체는 실행되지 않으며 미리보기 또는 대체 표시로 변환됩니다.',
-    MATH: '일부 수식은 대체 표시로 변환되었습니다.',
-    MEDIA: '일부 오디오·동영상은 브라우저에서 재생할 수 없습니다.',
-    TIMING: '애니메이션과 전환 효과는 정적인 슬라이드로 저장됩니다.',
-    IMAGE: '일부 이미지 형식 또는 외부 이미지를 표시하지 못할 수 있습니다.',
-    DRAWINGML: '일부 도형·효과는 원본과 다르게 표시될 수 있습니다.',
-    ACTION: '일부 슬라이드 동작 또는 링크는 변환되지 않습니다.',
-    FONT: '일부 글꼴은 이 기기에 설치된 대체 글꼴로 표시될 수 있습니다.'
-  };
-  for (const item of items) {
-    const code = String(item.code || 'CONVERSION_NOTICE');
-    const part = String(item.location?.part_name || '');
-    // Notes and package inventories are not rendering failures. Never copy their raw text.
-    if (/NOTE|COMMENT|AUTHOR/.test(code) || /(?:notes|comments|Authors)/i.test(part)) continue;
-    if (code === 'OOXML_PART_UNSUPPORTED' && (part.endsWith('/') || !/\/(slides|charts|diagrams)\//.test(part))) continue;
-    if (code === 'OOXML_ELEMENT_UNSUPPORTED' && !/\/(slides|charts|diagrams)\//.test(part)) continue;
-    if (code === 'OOXML_ELEMENT_UNSUPPORTED' && /^(?:a:chOff|a:chExt|a:masterClrMapping)$/.test(item.location?.qualified_element_name || '')) continue;
-    const family = Object.keys(names).find((name) => code.includes(name)) || 'OTHER';
-    if (!grouped.has(family)) grouped.set(family, {
-      code: family === 'OTHER' ? 'UNSUPPORTED_FEATURES' : code,
-      message: names[family] || '일부 PPTX 기능이 완전히 재현되지 않았습니다. 미리보기를 원본과 비교해 주세요.',
-      slides: new Set()
-    });
-    const index = item.location?.slide_index;
-    if (Number.isInteger(index) && index >= 0) grouped.get(family).slides.add(index + 1);
-  }
-  return [...grouped.values()].map(({code, message, slides}) => ({
-    code,
-    message: message + (slides.size ? ' (슬라이드 ' + [...slides].sort((a,b) => a-b).slice(0, 12).join(', ') + (slides.size > 12 ? ' 외' : '') + ')' : '')
-  }));
-}
-
 function friendlyError(error) {
   const message = String(error?.message || error || '');
   if (/[가-힣]/.test(message)) return message;
@@ -41797,8 +42330,6 @@ function friendlyError(error) {
 self.onmessage = async function (event) {
   const {type, id, bytes, options = {}} = event.data || {};
   if (type !== 'convert') return;
-  let info;
-  let result;
   let inputFormat = '확인되지 않은 파일 구조';
   try {
     if (!(bytes instanceof ArrayBuffer) || !bytes.byteLength || bytes.byteLength > MAX_INPUT_BYTES) throw new Error('파일 크기는 0보다 크고 64 MiB 이하여야 합니다.');
@@ -41810,24 +42341,22 @@ self.onmessage = async function (event) {
     inputFormat = prepared.description || prepared.format;
     self.postMessage({type: 'progress', id, message: 'PPTX 파일과 이미지·차트 연결을 확인하는 중입니다…'});
     data = await normalizePptxPackage(data);
+    const themed = await PptxInput.resolveThemes(data, JSZip);
+    data = themed.bytes;
     self.postMessage({type: 'progress', id, message: '내장 변환 엔진을 준비하는 중입니다…'});
     const binary = atob(EMBEDDED_WASM_BASE64);
     const wasmBytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index += 1) wasmBytes[index] = binary.charCodeAt(index);
     initSync({module: wasmBytes});
     self.postMessage({type: 'progress', id, message: '슬라이드 구성과 크기를 확인하는 중입니다…'});
-    info = get_presentation_info(data);
-    const width = info.widthPx;
-    const height = info.heightPx;
-    if (!info.slideCount) throw new Error('변환할 슬라이드가 없습니다.');
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > 30000 || height > 30000) throw new Error('지원하지 않는 슬라이드 크기입니다. 슬라이드 크기를 조정한 PPTX 사본이 필요합니다.');
-    const range = selectedSlides(options.slideRange, info.slideCount);
-    self.postMessage({type: 'progress', id, message: '텍스트·이미지·도형을 HTML로 변환하는 중입니다…'});
-    result = convert_with_options_metadata(data, true, !!options.includeHidden, range, 1);
-    const html = result.html;
-    const slideCount = (html.match(/class="slide"/g) || []).length;
-    if (!slideCount) throw new Error('선택한 범위에 표시할 슬라이드가 없습니다. 숨긴 슬라이드 포함 설정을 확인해 주세요.');
-    self.postMessage({type: 'result', id, html, width, height, slideCount, diagnostics: summarizeDiagnostics(result.diagnosticsJson)});
+    const rendered = PptxCore.render({get_presentation_info, convert_with_options_metadata}, data, {
+      slideRange: options.slideRange, includeHidden: options.includeHidden,
+      onProgress: message => self.postMessage({type: 'progress', id, message})
+    });
+    rendered.diagnostics.push(...themed.diagnostics);
+    rendered.chartData = await PptxInput.inspectChartData(data, JSZip, rendered.chartFallbacks, rendered.html);
+    delete rendered.chartFallbacks;
+    self.postMessage(Object.assign({type: 'result', id}, rendered));
   } catch (error) {
     const code = typeof error?.code === 'string' ? error.code : 'CONVERSION_FAILED';
     const initial = bytes instanceof ArrayBuffer ? new Uint8Array(bytes).slice(0, 8) : new Uint8Array();
@@ -41839,8 +42368,6 @@ self.onmessage = async function (event) {
     self.postMessage({type: 'error', id, code, message: friendlyError(error), details: details.join('\n')});
   } finally {
     options.password = '';
-    result?.free();
-    info?.free();
   }
 };
 
@@ -41999,6 +42526,75 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
     });
   }
 
+  function addChartData(slide, sourceNumber, input) {
+    if (!sourceNumber || !Array.isArray(input) || input.length > 100) return;
+    function near(a, b) { return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 0.11; }
+    function sameRect(a, b) { return a && b && ['x', 'y', 'width', 'height'].every(k => near(a[k] / 9525, b[k] / 9525)); }
+    const records = input.filter(r => r && r.slideNumber === sourceNumber && r.rect &&
+      Object.values(r.rect).every(n => Number.isFinite(n) && Math.abs(n) <= 30000 * 9525));
+    const placeholders = Array.from(slide.querySelectorAll('.chart-placeholder')).filter(p => p.parentElement?.classList.contains('shape'));
+    for (const record of records) {
+      if (records.filter(other => sameRect(record.rect, other.rect)).length !== 1) continue;
+      const matched = placeholders.filter(p => {
+        const shape = p.parentElement;
+        if (p.closest('.slide') !== slide || shape.querySelector('.chart-direct')) return false;
+        // Only untransformed top-level chart frames can be matched from these
+        // engine diagnostics. Group-relative coordinates are intentionally skipped.
+        for (let n = shape; n && n !== slide; n = n.parentElement) {
+          if ((n !== shape && n.classList.contains('shape')) ||
+              (n.style.transform && n.style.transform !== 'none') ||
+              (n !== shape && (n.style.left || n.style.top))) return false;
+        }
+        return [['left', 'x'], ['top', 'y'], ['width', 'width'], ['height', 'height']].every(([css, key]) =>
+          /^-?\d+(?:\.\d+)?px$/.test(shape.style[css]) && near(parseFloat(shape.style[css]), record.rect[key] / 9525));
+      });
+      if (matched.length !== 1) continue;
+      const placeholder = matched[0];
+      if (placeholder.querySelector('.chart-cache-data')) continue;
+      const box = document.createElement('div');
+      box.className = 'chart-cache-data';
+      box.style.cssText = 'padding:12px;color:#334155;font-size:13px;line-height:1.4;text-align:left';
+      const note = document.createElement('p');
+      note.textContent = '원본 차트 대신 문서에 저장된 데이터 · Cached data, not the original chart';
+      box.appendChild(note);
+      if (record.status === 'cached' && Array.isArray(record.columns) && record.columns.length <= 32 &&
+          Array.isArray(record.rows) && record.rows.length <= 100 && record.rows.length &&
+          record.rows.every(row => Array.isArray(row) && row.length === record.columns.length && row.every(v => typeof v === 'string' && v.length <= 256)) &&
+          record.columns.every(v => typeof v === 'string' && v.length <= 256)) {
+        const table = document.createElement('table');
+        table.style.cssText = 'border-collapse:collapse;width:100%;font-size:12px';
+        const caption = document.createElement('caption');
+        caption.textContent = '저장된 차트 캐시의 원시 값 (백분율·날짜 등 숫자 서식 미적용, 빈칸은 저장된 값 없음, 긴 텍스트는 256자까지 표시)';
+        table.appendChild(caption);
+        const head = document.createElement('thead'), heading = document.createElement('tr');
+        ['행'].concat(record.columns).forEach(label => {
+          const th = document.createElement('th'); th.scope = 'col'; th.textContent = label;
+          th.style.cssText = 'border:1px solid #94a3b8;padding:4px;text-align:left'; heading.appendChild(th);
+        });
+        head.appendChild(heading); table.appendChild(head);
+        const body = document.createElement('tbody');
+        record.rows.forEach((row, index) => {
+          const tr = document.createElement('tr'), th = document.createElement('th');
+          th.scope = 'row'; th.textContent = String(index + 1); tr.appendChild(th);
+          row.forEach(value => { const td = document.createElement('td'); td.textContent = value;
+            td.style.cssText = 'border:1px solid #cbd5e1;padding:4px'; tr.appendChild(td); });
+          body.appendChild(tr);
+        });
+        table.appendChild(body); box.appendChild(table);
+      } else {
+        const reason = document.createElement('p');
+        reason.textContent = record.status === 'limit' ? '저장된 데이터가 표시 한도(100행·16계열)를 초과합니다.' :
+          record.status === 'empty' ? '문서에 저장된 차트 캐시 값이 없습니다.' : '저장된 차트 데이터를 안전하게 읽을 수 없습니다.';
+        box.appendChild(reason);
+      }
+      placeholder.replaceChildren(box);
+      placeholder.style.cssText = 'display:block;overflow:auto;box-sizing:border-box;width:100%;height:100%;background:#f8fafc;border:1px dashed #94a3b8';
+      placeholder.setAttribute('tabindex', '0');
+      placeholder.setAttribute('role', 'region');
+      placeholder.setAttribute('aria-label', '저장된 차트 데이터');
+    }
+  }
+
   function prepare(options) {
     if (!global.DOMPurify || typeof global.DOMPurify.sanitize !== 'function') {
       throw new Error('HTML 정화 모듈을 사용할 수 없습니다.');
@@ -42025,6 +42621,13 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
     }).join('\n');
     const container = sourceRoot.querySelector('.pptx-container');
     if (!container) throw new Error('변환 결과에서 슬라이드를 찾을 수 없습니다.');
+    // A pinned-engine chart fallback can close its container too early. Recover
+    // genuine later shells in document order, never shells inside slide content.
+    const recoverable = Array.from(sourceRoot.querySelectorAll('.slide-shell')).filter(function (shell) {
+      return !shell.parentElement?.closest('.slide, .slide-shell') &&
+        Array.from(shell.children).some(function (node) { return node.classList?.contains('slide'); });
+    });
+    recoverable.forEach(function (shell) { container.appendChild(shell); });
     const shells = Array.from(container.children).filter(function (node) {
       return node.classList && node.classList.contains('slide-shell');
     });
@@ -42033,7 +42636,12 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
       const slide = Array.from(sourceShell.children).find(function (node) {
         return node.classList && node.classList.contains('slide');
       });
-      return { shell: sourceShell, slide: slide };
+      const shellNumber = sourceShell.getAttribute('data-slide');
+      const slideNumber = slide && slide.getAttribute('data-slide');
+      const number = Number(shellNumber || slideNumber);
+      const sourceNumber = Number.isSafeInteger(number) && number >= 1 && number <= 1000 &&
+        (!shellNumber || !slideNumber || Number(shellNumber) === Number(slideNumber)) ? number : null;
+      return { shell: sourceShell, slide: slide, sourceNumber: sourceNumber };
     }).filter(function (record) { return Boolean(record.slide); });
     const slideTargets = new Map();
     records.forEach(function (record, index) {
@@ -42046,8 +42654,10 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
       });
       if (record.slide.id) slideTargets.set(record.slide.id, number);
     });
+    const sourceSlides = [];
     const slideMarkup = records.map(function (record, index) {
       const slide = record.slide;
+      addChartData(slide, record.sourceNumber, source.chartData);
       if (/data-timing-initial\s*=/i.test(slide.outerHTML)) status.timing = true;
       const sanitized = global.DOMPurify.sanitize(slide.outerHTML, {
         USE_PROFILES: { html: true, svg: true, svgFilters: true },
@@ -42067,9 +42677,16 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
       cleanShell.className = 'slide-shell';
       cleanShell.dataset.slide = String(index + 1);
       cleanShell.appendChild(cleanSlide);
+      sourceSlides.push(record.sourceNumber);
       return cleanShell.outerHTML;
     }).filter(Boolean);
     if (!slideMarkup.length) throw new Error('안전하게 표시할 수 있는 슬라이드가 없습니다.');
+    if (source.slideCount !== undefined && (!Number.isInteger(source.slideCount) ||
+        source.slideCount < 1 || source.slideCount > 1000 || source.slideCount !== slideMarkup.length)) {
+      const failure = new Error('변환된 슬라이드 일부를 안전하게 내보내지 못했습니다.');
+      failure.code = 'SLIDE_COUNT_MISMATCH';
+      throw failure;
+    }
 
     if (status.timing) diagnostics.push({ code: 'STATIC_ANIMATION', message: '애니메이션은 정적 상태로 표시됩니다.', slideIndex: null });
     if (status.external) diagnostics.push({ code: 'EXTERNAL_RESOURCE_BLOCKED', message: '외부 리소스를 제거했습니다. 포함된 이미지와 미디어만 표시됩니다.', slideIndex: null });
@@ -42096,7 +42713,8 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
       '<button id="ptv-print" type="button">인쇄</button></div></header>' +
       '<main id="ptv-main"><div class="pptx-container" id="ptv-slides">' + slideMarkup.join('') + '</div></main>' +
       '<script>' + viewerScript.replace(/<\//g, '<\\/') + '<\/script></body></html>';
-    return { html: out, diagnostics: diagnostics, slideCount: slideMarkup.length };
+    return { html: out, diagnostics: diagnostics, slideCount: slideMarkup.length,
+      sourceSlides: sourceSlides.every(Boolean) && new Set(sourceSlides).size === sourceSlides.length ? sourceSlides : null };
   }
 
   global.PptxExport = Object.freeze({ prepare: prepare });
@@ -42109,6 +42727,7 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
 
   const MAX_BYTES = 64 * 1024 * 1024;
   const TIMEOUT_MS = 120000;
+  const SERVER_MODE = document.documentElement.dataset.conversionMode === 'server';
   const $ = (id) => document.getElementById(id);
   const ui = {
     input: $('file-input'), select: $('select-button'), change: $('change-button'),
@@ -42120,12 +42739,17 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
     ready: $('result-ready'), subtitle: $('result-subtitle'), warnings: $('warnings'),
     warningCount: $('warning-count'), warningList: $('warning-list'),
     password: $('document-password'), protection: $('protection-options'),
-    diagnostics: $('diagnostics'), diagnosticsText: $('diagnostics-text')
+    diagnostics: $('diagnostics'), diagnosticsText: $('diagnostics-text'),
+    serviceStatus: $('service-status'), retryConnection: $('retry-connection'),
+    serviceBadge: $('service-badge'), privacyNote: $('privacy-note')
   };
 
   let selectedFile = null;
   let resultUrl = null;
   let worker = null;
+  let serverJob = null;
+  let serverReady = !SERVER_MODE;
+  let checkingServer = false;
   let deadline = null;
   let busy = false;
   let jobId = 0;
@@ -42180,9 +42804,10 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
     ui.range.disabled = busy;
     ui.hidden.disabled = busy;
     ui.password.disabled = busy;
-    ui.convert.disabled = busy || !selectedFile;
+    ui.convert.disabled = busy || !selectedFile || !serverReady;
     ui.cancel.hidden = !busy;
     ui.drop.classList.toggle('is-busy', busy);
+    if (ui.retryConnection) ui.retryConnection.disabled = busy || checkingServer;
   }
 
   function stopWorker() {
@@ -42193,6 +42818,10 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
     if (worker) {
       worker.terminate();
       worker = null;
+    }
+    if (serverJob) {
+      serverJob.abort();
+      serverJob = null;
     }
   }
 
@@ -42264,6 +42893,70 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
     ui.warnings.hidden = false;
   }
 
+  function displayResult(blob, slideCount, diagnostics) {
+    clearResult();
+    resultUrl = URL.createObjectURL(blob);
+    ui.preview.src = resultUrl;
+    ui.preview.hidden = false;
+    ui.empty.hidden = true;
+    ui.download.disabled = false;
+    ui.open.disabled = false;
+    ui.ready.hidden = false;
+    const count = Number(slideCount);
+    ui.subtitle.textContent = Number.isFinite(count) && count >= 0 ? count + '개 슬라이드 변환 완료' : '변환 완료';
+    showWarnings(diagnostics);
+    finishJob('HTML 변환이 완료되었습니다. 미리보기를 확인하거나 파일을 저장하세요.', 'success');
+  }
+
+  function showError(message) {
+    finishJob('변환 실패: ' + (typeof message.message === 'string' ? message.message : '알 수 없는 오류'), 'error');
+    ui.status.dataset.errorCode = typeof message.code === 'string' ? message.code : 'CONVERSION_FAILED';
+    if (typeof message.details === 'string' && message.details) {
+      ui.diagnosticsText.textContent = message.details;
+      ui.diagnostics.hidden = false;
+    }
+    if (['PASSWORD_REQUIRED', 'INCORRECT_PASSWORD', 'DRM_PROTECTED', 'UNKNOWN_CONTAINER', 'INVALID_CONTAINER', 'LEGACY_PPT', 'UNSUPPORTED_ENCRYPTION', 'UNSUPPORTED_PACKAGE'].includes(message.code)) {
+      ui.protection.open = true;
+    }
+    if (message.code === 'PASSWORD_REQUIRED' || message.code === 'INCORRECT_PASSWORD') ui.password.focus();
+    if (SERVER_MODE && ['SERVER_UNAVAILABLE', 'FORBIDDEN'].includes(message.code)) {
+      serverReady = false;
+      ui.serviceStatus.textContent = message.code === 'FORBIDDEN' ?
+        '변환 서비스 연결 정보를 새로 확인해 주세요.' : '변환 서비스 연결이 끊겼습니다. 연결을 다시 확인해 주세요.';
+      ui.retryConnection.hidden = false;
+      refreshControls();
+    }
+  }
+
+  async function checkServer() {
+    if (!SERVER_MODE || checkingServer || busy) return;
+    checkingServer = true;
+    serverReady = false;
+    ui.serviceStatus.textContent = '변환 서비스에 연결하는 중입니다…';
+    refreshControls();
+    try {
+      if (!window.PptxServer || typeof window.PptxServer.check !== 'function') {
+        throw new Error('연결 모듈을 불러오지 못했습니다. 페이지를 새로 고쳐 주세요.');
+      }
+      const status = await window.PptxServer.check();
+      serverReady = true;
+      ui.retryConnection.hidden = true;
+      const local = status.mode === 'local';
+      ui.serviceStatus.textContent = (local ? '이 PC의 변환 서비스에 연결되었습니다.' : '변환 서버에 연결되었습니다.') +
+        (status.busy ? ' 다른 파일을 처리 중이므로 잠시 후 변환해 주세요.' : ' 파일을 선택해 변환하세요.');
+      ui.serviceBadge.textContent = local ? '이 PC에서 처리' : '서버에서 처리';
+      ui.privacyNote.textContent = local ?
+        '파일과 입력한 암호는 이 PC의 변환 서비스로 전달됩니다. 외부 변환 서버로 전송하지 않으며, 작업이 끝나면 임시 파일을 삭제합니다.' :
+        '파일과 입력한 암호는 이 사이트의 변환 서버로 전송됩니다. 변환 응답 또는 취소 처리가 끝나면 임시 파일을 삭제합니다.';
+    } catch (error) {
+      ui.serviceStatus.textContent = error && error.message ? error.message : '변환 서비스에 연결할 수 없습니다.';
+      ui.retryConnection.hidden = false;
+    } finally {
+      checkingServer = false;
+      refreshControls();
+    }
+  }
+
   function showResult(message) {
     if (typeof message.html !== 'string' || !message.html.trim()) {
       finishJob('변환 결과가 비어 있습니다. 다른 PPTX 파일로 다시 시도해 주세요.', 'error');
@@ -42279,18 +42972,7 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
       if (!prepared || typeof prepared.html !== 'string' || !prepared.html.trim()) {
         throw new Error('결과 HTML이 비어 있습니다.');
       }
-      clearResult();
-      resultUrl = URL.createObjectURL(new Blob([prepared.html], { type: 'text/html;charset=utf-8' }));
-      ui.preview.src = resultUrl;
-      ui.preview.hidden = false;
-      ui.empty.hidden = true;
-      ui.download.disabled = false;
-      ui.open.disabled = false;
-      ui.ready.hidden = false;
-      const count = Number(prepared.slideCount);
-      ui.subtitle.textContent = Number.isFinite(count) && count >= 0 ? count + '개 슬라이드 변환 완료' : '변환 완료';
-      showWarnings(prepared.diagnostics);
-      finishJob('HTML 변환이 완료되었습니다. 미리보기를 확인하거나 파일을 저장하세요.', 'success');
+      displayResult(new Blob([prepared.html], { type: 'text/html;charset=utf-8' }), prepared.slideCount, prepared.diagnostics);
     } catch (error) {
       clearResult();
       finishJob('결과를 표시하지 못했습니다: ' + (error && error.message ? error.message : '알 수 없는 오류'), 'error');
@@ -42299,6 +42981,10 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
 
   async function convert() {
     if (busy || !selectedFile) return;
+    if (SERVER_MODE && !serverReady) {
+      setStatus('변환 서비스 연결을 먼저 확인해 주세요.', 'error');
+      return;
+    }
     const fileError = validateFile(selectedFile);
     if (fileError) {
       setStatus(fileError, 'error');
@@ -42311,7 +42997,7 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
       return;
     }
     const workerSource = $('engine-worker');
-    if (!workerSource || !workerSource.textContent.trim() || typeof Worker === 'undefined') {
+    if (!SERVER_MODE && (!workerSource || !workerSource.textContent.trim() || typeof Worker === 'undefined')) {
       setStatus('이 브라우저에서 로컬 변환 엔진을 사용할 수 없습니다.', 'error');
       return;
     }
@@ -42328,14 +43014,27 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
     // Keep the password only in this conversion request, never in storage or output.
     ui.password.value = '';
     refreshControls();
-    setStatus('파일을 읽는 중입니다…', 'working');
+    setStatus(SERVER_MODE ? '변환 서비스에 요청하는 중입니다…' : '파일을 읽는 중입니다…', 'working');
     deadline = setTimeout(function () {
       if (id !== jobId || !busy) return;
       ++jobId;
-      finishJob('변환 시간이 2분을 초과해 중지했습니다. 파일 크기를 확인하고 다시 시도해 주세요.', 'error');
-    }, TIMEOUT_MS);
+      finishJob(SERVER_MODE ? '변환 서비스의 응답 시간이 초과되어 요청을 중지했습니다. 다시 시도해 주세요.' :
+        '변환 시간이 2분을 초과해 중지했습니다. 파일 크기를 확인하고 다시 시도해 주세요.', 'error');
+    }, SERVER_MODE ? window.PptxServer.timeoutMs : TIMEOUT_MS);
 
     try {
+      if (SERVER_MODE) {
+        serverJob = window.PptxServer.convert(file, options, function (message) {
+          if (id === jobId && busy) setStatus(message, 'working');
+        });
+        const result = await serverJob.promise;
+        if (id !== jobId || !busy) return;
+        // The native CLI already sanitizes and packages a complete HTML document.
+        // Passing it through the browser exporter again would lose its viewer.
+        serverJob = null;
+        displayResult(result.blob, result.slideCount, result.diagnostics);
+        return;
+      }
       const bytes = await file.arrayBuffer();
       if (id !== jobId || !busy) return;
       if (bytes.byteLength === 0 || bytes.byteLength > MAX_BYTES) {
@@ -42356,16 +43055,7 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
         } else if (message.type === 'result') {
           showResult(message);
         } else if (message.type === 'error') {
-          finishJob('변환 실패: ' + (typeof message.message === 'string' ? message.message : '알 수 없는 오류'), 'error');
-          ui.status.dataset.errorCode = typeof message.code === 'string' ? message.code : 'CONVERSION_FAILED';
-          if (typeof message.details === 'string' && message.details) {
-            ui.diagnosticsText.textContent = message.details;
-            ui.diagnostics.hidden = false;
-          }
-          if (['PASSWORD_REQUIRED', 'INCORRECT_PASSWORD', 'DRM_PROTECTED', 'UNKNOWN_CONTAINER', 'INVALID_CONTAINER', 'LEGACY_PPT', 'UNSUPPORTED_ENCRYPTION', 'UNSUPPORTED_PACKAGE'].includes(message.code)) {
-            ui.protection.open = true;
-          }
-          if (message.code === 'PASSWORD_REQUIRED' || message.code === 'INCORRECT_PASSWORD') ui.password.focus();
+          showError(message);
         }
       };
       worker.onerror = function (event) {
@@ -42378,7 +43068,13 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
       options.password = '';
     } catch (error) {
       if (id !== jobId || !busy) return;
+      if (SERVER_MODE) {
+        showError(error || {});
+        return;
+      }
       finishJob('파일을 읽거나 변환할 수 없습니다: ' + (error && error.message ? error.message : '알 수 없는 오류'), 'error');
+    } finally {
+      options.password = '';
     }
   }
 
@@ -42387,6 +43083,7 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
   ui.input.addEventListener('change', function () { if (ui.input.files && ui.input.files[0]) selectFile(ui.input.files[0]); });
   ui.input.addEventListener('click', function () { if (!busy) ui.input.value = ''; });
   ui.convert.addEventListener('click', convert);
+  if (ui.retryConnection) ui.retryConnection.addEventListener('click', checkServer);
   ui.password.addEventListener('keydown', function (event) {
     if (event.key === 'Enter' && !busy) {
       event.preventDefault();
@@ -42456,6 +43153,7 @@ function a(e,t){return n(e)||r(e,t)||o(e,t)||i()}function o(e,n){if(e){if(typeof
 
   clearResult();
   refreshControls();
+  if (SERVER_MODE) checkServer();
 })();
 
 </script>
@@ -43497,79 +44195,79 @@ SOFTWARE.
 
 ------------------------------------------------------------------------
 
+bn.js 4.12.5 (MIT)
+Copyright Fedor Indutny, 2015.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+------------------------------------------------------------------------
+
+bn.js 4.12.5 (MIT)
+Copyright Fedor Indutny, 2015.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+------------------------------------------------------------------------
+
+bn.js 4.12.5 (MIT)
+Copyright Fedor Indutny, 2015.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+------------------------------------------------------------------------
+
 bn.js 5.2.5 (MIT)
-Copyright Fedor Indutny, 2015.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-
-------------------------------------------------------------------------
-
-bn.js 4.12.5 (MIT)
-Copyright Fedor Indutny, 2015.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-
-------------------------------------------------------------------------
-
-bn.js 4.12.5 (MIT)
-Copyright Fedor Indutny, 2015.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-
-------------------------------------------------------------------------
-
-bn.js 4.12.5 (MIT)
 Copyright Fedor Indutny, 2015.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -44741,7 +45439,7 @@ SOFTWARE.
 
 ------------------------------------------------------------------------
 
-hash-base 3.1.2 (MIT)
+hash-base 3.0.5 (MIT)
 The MIT License (MIT)
 
 Copyright (c) 2016 Kirill Fomichev
@@ -44767,7 +45465,7 @@ THE SOFTWARE.
 
 ------------------------------------------------------------------------
 
-hash-base 3.0.5 (MIT)
+hash-base 3.1.2 (MIT)
 The MIT License (MIT)
 
 Copyright (c) 2016 Kirill Fomichev
@@ -44970,17 +45668,19 @@ SOFTWARE.
 
 ------------------------------------------------------------------------
 
-isarray 2.0.5 (MIT)
-MIT License
+isarray 1.0.0 (MIT)
+## License
 
-Copyright (c) 2013 Julian Gruber <julian@juliangruber.com>
+(MIT)
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Copyright (c) 2013 Julian Gruber &lt;julian@juliangruber.com&gt;
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
@@ -44996,19 +45696,17 @@ SOFTWARE.
 
 ------------------------------------------------------------------------
 
-isarray 1.0.0 (MIT)
-## License
+isarray 2.0.5 (MIT)
+MIT License
 
-(MIT)
+Copyright (c) 2013 Julian Gruber <julian@juliangruber.com>
 
-Copyright (c) 2013 Julian Gruber &lt;julian@juliangruber.com&gt;
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-of the Software, and to permit persons to whom the Software is furnished to do
-so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.

@@ -54,7 +54,7 @@ if (process.env.NATIVE_TEST_WORKER_MODE) {
 
 function run(args, {stdin, guarded = true, timeout = 180000, workerMode} = {}) {
   const env = {...process.env};
-  if (guarded) env.NODE_OPTIONS = [env.NODE_OPTIONS, '--require=' + guard].filter(Boolean).join(' ');
+  if (guarded) env.NODE_OPTIONS = [env.NODE_OPTIONS, '--require=' + JSON.stringify(guard)].filter(Boolean).join(' ');
   if (workerMode) env.NATIVE_TEST_WORKER_MODE = workerMode;
   const result = spawnSync(process.execPath, [cli, ...args.map(String)], {
     cwd: root, env, input: stdin, encoding: 'utf8', timeout,

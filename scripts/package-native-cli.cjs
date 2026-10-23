@@ -45,12 +45,15 @@ async function main() {
     }
   }
   for (const relative of [
-    'tools/convert-pptx.cjs', 'tools/Convert-PptxNative.cmd',
-    'src/native-cli-worker.cjs', 'src/input-package.js', 'src/normalize-package.js',
+    'tools/convert-pptx.cjs', 'tools/Convert-PptxNative.cmd', 'tools/serve-web.cjs',
+    'src/native-cli-worker.cjs', 'src/conversion-core.js', 'src/input-package.js', 'src/normalize-package.js', 'src/chart-data.js', 'src/theme-resolver.js',
     'src/exporter.js', 'src/viewer.js', 'src/viewer.css',
-    'docs/NATIVE_CLI.md', 'package.json', 'package-lock.json', 'LICENSE'
+    'src/web-shell.html', 'src/server-client.js', 'src/app.js', 'src/styles.css',
+    'docs/NATIVE_CLI.md', 'docs/WEB_SERVICE.md', 'docs/REFERENCE_REVIEW.md', 'package.json', 'package-lock.json', 'LICENSE'
   ]) await add(relative);
-  await add('docs/NATIVE_CLI.md', 'README.md', text => text.replace('(../LICENSE)', '(LICENSE)'));
+  await add('docs/NATIVE_CLI.md', 'README.md', text => text
+    .replace('(../LICENSE)', '(LICENSE)').replace('(WEB_SERVICE.md)', '(docs/WEB_SERVICE.md)')
+    .replace('(REFERENCE_REVIEW.md)', '(docs/REFERENCE_REVIEW.md)'));
 
   for (const [relative, record] of Object.entries(lock.packages).sort(([a], [b]) => a.localeCompare(b, 'en'))) {
     if (!relative.startsWith('node_modules/') || record.dev) continue;

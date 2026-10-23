@@ -334,4 +334,5 @@ async function prepare(bytes, password) {
   }
 }
 
-module.exports = {prepare};
+module.exports = {prepare, inspectChartData: require('./chart-data.js').inspect,
+  resolveThemes: require('./theme-resolver.js').resolveThemes};
