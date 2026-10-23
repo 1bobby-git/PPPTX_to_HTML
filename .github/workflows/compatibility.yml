@@ -66,6 +66,34 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Use the Ubuntu archive for browser dependencies
+        shell: bash
+        run: |
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          sources = Path('/etc/apt/sources.list.d')
+          files = [Path('/etc/apt/sources.list'), Path('/etc/apt/apt-mirrors.txt')]
+          files += sorted(sources.glob('*.list')) + sorted(sources.glob('*.sources'))
+          uri = re.compile(rb'(?<!\S)https?://azure\.archive\.ubuntu\.com/ubuntu(/?)(?=\s|$)')
+          changed = 0
+          for file in files:
+              if not file.is_file():
+                  continue
+              original = file.read_bytes()
+              lines = []
+              for line in original.splitlines(keepends=True):
+                  active, marker, comment = line.partition(b'#')
+                  lines.append(uri.sub(rb'https://archive.ubuntu.com/ubuntu\1', active) + marker + comment)
+              updated = b''.join(lines)
+              if updated != original:
+                  file.write_bytes(updated)
+                  changed += 1
+                  print(f'Updated Ubuntu archive URI in {file}.')
+          if not changed:
+              print('Azure Ubuntu archive URI not present; APT sources unchanged.')
+          PY
       - name: Install WebKit test browser
         if: matrix.browser == 'webkit'
         run: npx playwright install --with-deps webkit
