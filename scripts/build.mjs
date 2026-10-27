@@ -4,9 +4,11 @@ import { join, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 import browserify from 'browserify';
+import browserifyBuiltins from 'browserify/lib/builtins.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const read = (path) => readFile(join(root, path), 'utf8');
+// Keep embedded scripts/styles and generated artifacts independent of checkout EOLs.
+const read = async (path) => (await readFile(join(root, path), 'utf8')).replace(/\r\n?/g, '\n');
 const enginePath = 'node_modules/@briank-dev/pptx-to-html/';
 const enginePackage = JSON.parse(await read(enginePath + 'package.json'));
 const engineVersion = enginePackage.version;
@@ -29,13 +31,22 @@ const [shell, css, app, adapter, exporterTemplate, viewer, viewerCss, glueSource
 
 // Bundle the password reader and all browser shims into the same offline worker.
 const cryptoPackages = new Map();
-const cryptoBundler = browserify(join(root, 'src/input-package.js'), {standalone: 'PptxInput', debug: false});
+const cryptoBundler = browserify(join(root, 'src/input-package.js'), {
+  standalone: 'PptxInput', debug: false,
+  builtins: {...browserifyBuiltins, crypto: join(root, 'src/browser-office-crypto.cjs')}
+});
 cryptoBundler.on('package', (pkg) => {
   if (pkg.__dirname && pkg.__dirname.includes('node_modules')) cryptoPackages.set(pkg.__dirname, pkg);
 });
 const cryptoSource = await new Promise((resolve, reject) => {
-  cryptoBundler.bundle((error, buffer) => error ? reject(error) : resolve(buffer.toString('utf8')));
+  cryptoBundler.bundle((error, buffer) => error ? reject(error) : resolve(buffer.toString('utf8').replace(/\r\n?/g, '\n')));
 });
+// Office decryption needs symmetric crypto only. Fail the build if a future
+// dependency pulls the unused elliptic-curve/signature implementations back in.
+const forbiddenCrypto = new Set(['crypto-browserify', 'browserify-sign', 'create-ecdh', 'elliptic']);
+for (const pkg of cryptoPackages.values()) {
+  if (forbiddenCrypto.has(pkg.name)) throw new Error('Unexpected browser crypto dependency: ' + pkg.name);
+}
 const cryptoLicenseBlocks = await Promise.all([...cryptoPackages.values()].sort((a, b) =>
   a.name.localeCompare(b.name, 'en') || a.version.localeCompare(b.version, 'en')).map(async (pkg) => {
   const names = await readdir(pkg.__dirname);
