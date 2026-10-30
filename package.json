@@ -1,11 +1,11 @@
 {
   "name": "ppptx-to-html",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Offline PPTX to HTML desktop app, native CLI and browser converter",
   "scripts": {
     "build": "node scripts/build.mjs",
     "pretest": "node scripts/create-fixtures.cjs",
-    "test": "node tests/offline.cjs && node tests/protection.cjs",
+    "test": "node tests/release-metadata.cjs && node tests/offline.cjs && node tests/protection.cjs",
     "test:core": "node tests/conversion-core.cjs",
     "test:charts": "node scripts/create-fixtures.cjs && node tests/chart-data.cjs",
     "test:engine": "node scripts/create-fixtures.cjs && node tests/chart-engine.cjs",

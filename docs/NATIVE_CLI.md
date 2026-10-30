@@ -1,10 +1,10 @@
-# PPTX → HTML Native CLI · v1.6.0
+# PPTX → HTML Native CLI · v1.6.2
 
 이 CLI는 **PowerPoint, LibreOffice, 브라우저 프로그램을 실행하지 않습니다.** Node.js 안에서 PPTX의 ZIP/XML을 읽고, 기존 JavaScript/WASM 변환 엔진으로 HTML·표·이미지·SVG 도형을 만듭니다. PDF나 슬라이드 전체 PNG를 중간 결과로 저장하지 않습니다.
 
 결과물은 이미지와 탐색 UI가 내장된 **HTML 한 파일**입니다. 변환이 끝나면 해당 HTML을 더블클릭하여 로컬 브라우저에서 볼 수 있습니다. 결과를 보는 컴퓨터에는 Node.js나 원본 PPTX가 필요하지 않습니다.
 
-사용자가 CLI를 직접 다루지 않게 하려면 [Windows 실행 파일](DESKTOP.md)을 사용하거나, [웹 서비스 안내](WEB_SERVICE.md)를 따라 운영자가 서비스를 준비하세요. v1.6.0 의존성 포함 Native ZIP에도 웹 서비스 파일이 들어 있습니다. 일반 사용자는 EXE를 열거나 제공된 웹 주소만 열면 됩니다.
+사용자가 CLI를 직접 다루지 않게 하려면 [Windows 실행 파일](DESKTOP.md)을 사용하거나, [웹 서비스 안내](WEB_SERVICE.md)를 따라 운영자가 서비스를 준비하세요. v1.6.2 의존성 포함 Native ZIP에도 웹 서비스 파일이 들어 있습니다. 일반 사용자는 EXE를 열거나 제공된 웹 주소만 열면 됩니다.
 
 ## Windows에서 실행
 
@@ -20,7 +20,7 @@ Node.js를 설치할 수 없는 환경에서 회사가 허용한 휴대용 Node.
 
 ### 2. 변환기 준비
 
-**의존성 포함 배포본** `PPPTX_to_HTML_Native_v1.6.0.zip`을 받았다면 압축만 풉니다. `node_modules`도 함께 들어 있으므로 npm 설치 단계 없이 오프라인에서 사용할 수 있습니다. 이 Native ZIP은 Node.js가 필요한 CLI 배포이며, Node.js까지 포함한 Windows Desktop ZIP과는 다릅니다.
+**의존성 포함 배포본** `PPPTX_to_HTML_Native_v1.6.2.zip`을 받았다면 압축만 풉니다. `node_modules`도 함께 들어 있으므로 npm 설치 단계 없이 오프라인에서 사용할 수 있습니다. 이 Native ZIP은 Node.js가 필요한 CLI 배포이며, Node.js까지 포함한 Windows Desktop ZIP과는 다릅니다.
 
 **GitHub의 Code → Download ZIP**으로 소스를 받았다면, 압축을 푼 프로젝트 폴더에서 최초 한 번 다음 명령을 실행합니다.
 

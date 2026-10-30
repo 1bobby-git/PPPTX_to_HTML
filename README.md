@@ -1,10 +1,10 @@
 # PPTX → HTML
 
-`.pptx` 프레젠테이션을 독립적인 HTML 파일로 변환합니다. 최신 버전은 **v1.6.0**입니다. **Windows 실행 파일에서 파일 선택 → 변환 → 미리보기 → HTML 저장까지 진행할 수 있습니다.** 일반 사용자는 Node.js 설치나 CMD 명령어 입력이 필요 없습니다. PowerPoint와 LibreOffice를 실행하지 않으며, 문서는 이 PC 안에서 변환합니다.
+`.pptx` 프레젠테이션을 독립적인 HTML 파일로 변환합니다. 최신 버전은 **v1.6.2**입니다. **Windows 실행 파일에서 파일 선택 → 변환 → 미리보기 → HTML 저장까지 진행할 수 있습니다.** 일반 사용자는 Node.js 설치나 CMD 명령어 입력이 필요 없습니다. PowerPoint와 LibreOffice를 실행하지 않으며, 문서는 이 PC 안에서 변환합니다.
 
 ## 사용자: Windows 실행 파일로 변환하기
 
-1. [v1.6.0 다운로드](https://github.com/1bobby-git/PPPTX_to_HTML/releases/tag/v1.6.0)에서 **`PPPTX_to_HTML_Desktop_v1.6.0_win32-x64.zip`**을 받습니다.
+1. [v1.6.2 다운로드](https://github.com/1bobby-git/PPPTX_to_HTML/releases/tag/v1.6.2)에서 **`PPPTX_to_HTML_Desktop_v1.6.2_win32-x64.zip`**을 받습니다.
 2. ZIP의 **압축을 모두 풀고** `PPPTX_to_HTML.exe`를 더블클릭합니다.
 3. **파일 선택**으로 PPTX를 고릅니다. 필요한 경우 슬라이드 범위·숨김 슬라이드 포함·제목·문서 열기 암호를 설정합니다.
 4. **HTML로 변환**을 누르고 결과를 **미리보기**로 확인합니다.
@@ -67,7 +67,7 @@ npm.cmd ci --omit=dev --ignore-scripts --no-audit --no-fund
 .\tools\Convert-PptxNative.cmd "C:\test.pptx" -o "C:\test.html"
 ```
 
-의존성이 포함된 `PPPTX_to_HTML_Native_v1.6.0.zip`을 받았다면 `npm.cmd ci`는 생략합니다. 압축을 푼 폴더에서 바로 실행하세요. CMD를 사용하지 않고 다음처럼 실행해도 같습니다.
+의존성이 포함된 `PPPTX_to_HTML_Native_v1.6.2.zip`을 받았다면 `npm.cmd ci`는 생략합니다. 압축을 푼 폴더에서 바로 실행하세요. CMD를 사용하지 않고 다음처럼 실행해도 같습니다.
 
 ```powershell
 node .\tools\convert-pptx.cjs "C:\test.pptx" -o "C:\test.html"
