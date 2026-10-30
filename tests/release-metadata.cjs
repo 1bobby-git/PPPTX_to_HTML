@@ -6,7 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+// Windows checkouts may convert text files to CRLF; compare LF content everywhere.
+const read = file => fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
 const json = file => JSON.parse(read(file));
 const version = json('package.json').version;
 const tag = 'v' + version;
